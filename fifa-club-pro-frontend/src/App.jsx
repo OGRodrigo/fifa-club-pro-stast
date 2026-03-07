@@ -8,7 +8,7 @@ import Register from "./pages/Register";
 // privadas
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
-import JoinRequests from "./pages/joinRequests";
+import JoinRequests from "./pages/JoinRequests";
 import MemberStats from "./pages/MemberStats";
 import Clubs from "./pages/Clubs";
 import CreateClub from "./pages/CreateClub";
