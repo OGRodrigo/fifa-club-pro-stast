@@ -1,27 +1,36 @@
-// src/pages/EditMatchStats.jsx
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../api/client";
 import { useParams } from "react-router-dom";
+import { api } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 
 /**
  * EditMatchStats
- * - GET /matches/:id/full (ya lo tienes en controller)
- * - PATCH /matches/:id/player-stats (nuevo)
+ * - Carga un partido
+ * - Permite editar playerStats
+ * - Guarda usando la ruta segura:
+ *   PATCH /matches/:id/clubs/:clubId/player-stats
  */
 export default function EditMatchStats() {
-  const { id } = useParams(); // route: /matches/:id/stats (ejemplo)
-  const [match, setMatch] = useState(null);
-  const [playerStats, setPlayerStats] = useState([]);
+  const { id } = useParams();
+  const { clubContext } = useAuth();
+
+  const myClubId = clubContext?.clubId || "";
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
 
+  const [match, setMatch] = useState(null);
+  const [playerStats, setPlayerStats] = useState([]);
+
+  // -----------------------------
+  // Cargar match
+  // -----------------------------
   useEffect(() => {
     let alive = true;
 
-    async function load() {
+    async function loadMatch() {
       try {
         setLoading(true);
         setErr("");
@@ -30,18 +39,21 @@ export default function EditMatchStats() {
         const res = await api.get(`/matches/${id}/full`);
         if (!alive) return;
 
-        setMatch(res.data);
+        const matchData = res.data;
+        setMatch(matchData);
 
-        const ps = Array.isArray(res.data?.playerStats) ? res.data.playerStats : [];
-        // normaliza a { user, club, goals, assists }
-        setPlayerStats(
-          ps.map((x) => ({
-            user: x?.user?._id || x?.user,
-            club: x?.club,
-            goals: Number(x?.goals || 0),
-            assists: Number(x?.assists || 0),
-          }))
-        );
+        const initialStats = Array.isArray(matchData?.playerStats)
+          ? matchData.playerStats.map((ps) => ({
+              user: ps?.user?._id || ps?.user || "",
+              username: ps?.user?.username || "",
+              gamerTag: ps?.user?.gamerTag || "",
+              club: ps?.club?._id || ps?.club || "",
+              goals: Number(ps?.goals || 0),
+              assists: Number(ps?.assists || 0),
+            }))
+          : [];
+
+        setPlayerStats(initialStats);
       } catch (e) {
         if (!alive) return;
         setErr(e?.response?.data?.message || e.message);
@@ -50,216 +62,266 @@ export default function EditMatchStats() {
       }
     }
 
-    load();
+    if (id) {
+      loadMatch();
+    }
+
     return () => {
       alive = false;
     };
   }, [id]);
 
-  const homeClubId = match?.homeClub?._id;
-  const awayClubId = match?.awayClub?._id;
+  // -----------------------------
+  // Helpers
+  // -----------------------------
+  const clubChoices = useMemo(() => {
+    if (!match) return [];
 
-  const roster = useMemo(() => {
-    // En el match full, playerStats.user viene poblado si existía.
-    // Pero si estaba vacío, no hay roster.
-    // Por eso: roster = usuarios que aparezcan en playerStats (si no, queda vacío).
-    const ps = Array.isArray(match?.playerStats) ? match.playerStats : [];
-    const map = new Map();
-    ps.forEach((x) => {
-      const u = x?.user;
-      const uid = u?._id || x?.user;
-      if (!uid) return;
-      if (!map.has(uid)) {
-        map.set(uid, {
-          _id: uid,
-          username: u?.username || "unknown",
-          gamerTag: u?.gamerTag || "",
-        });
-      }
-    });
-    return Array.from(map.values());
+    return [
+      {
+        id: match?.homeClub?._id || match?.homeClub || "",
+        label: match?.homeClub?.name || "Home",
+      },
+      {
+        id: match?.awayClub?._id || match?.awayClub || "",
+        label: match?.awayClub?.name || "Away",
+      },
+    ].filter((c) => c.id);
   }, [match]);
 
-  const save = async () => {
-    if (!match?._id) return;
+  const scoreHome = Number(match?.scoreHome || 0);
+  const scoreAway = Number(match?.scoreAway || 0);
 
-    setSaving(true);
+  const totals = useMemo(() => {
+    const homeId = match?.homeClub?._id || match?.homeClub || "";
+    const awayId = match?.awayClub?._id || match?.awayClub || "";
+
+    const homeGoals = playerStats
+      .filter((ps) => String(ps.club) === String(homeId))
+      .reduce((acc, ps) => acc + Number(ps.goals || 0), 0);
+
+    const awayGoals = playerStats
+      .filter((ps) => String(ps.club) === String(awayId))
+      .reduce((acc, ps) => acc + Number(ps.goals || 0), 0);
+
+    return {
+      homeGoals,
+      awayGoals,
+    };
+  }, [playerStats, match]);
+
+  const validationMessage = useMemo(() => {
+    if (!match) return "";
+
+    if (!myClubId) {
+      return "No tienes club activo en sesión.";
+    }
+
+    if (totals.homeGoals !== scoreHome) {
+      return `Los goles del Home (${totals.homeGoals}) no coinciden con el marcador (${scoreHome}).`;
+    }
+
+    if (totals.awayGoals !== scoreAway) {
+      return `Los goles del Away (${totals.awayGoals}) no coinciden con el marcador (${scoreAway}).`;
+    }
+
+    return "";
+  }, [match, myClubId, totals, scoreHome, scoreAway]);
+
+  const setRow = (index, patch) => {
+    setPlayerStats((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, ...patch } : row))
+    );
+  };
+
+  // -----------------------------
+  // Guardar
+  // -----------------------------
+  const onSubmit = async (e) => {
+    e.preventDefault();
     setErr("");
     setOk("");
 
-    try {
-      const cleaned = Array.isArray(playerStats)
-        ? playerStats
-            .filter((ps) => ps.user && ps.club)
-            .map((ps) => ({
-              user: ps.user,
-              club: ps.club,
-              goals: Number(ps.goals || 0),
-              assists: Number(ps.assists || 0),
-            }))
-        : [];
+    if (!match) {
+      setErr("No se pudo cargar el partido.");
+      return;
+    }
 
-      await api.patch(`/matches/${match._id}/player-stats`, {
+    if (!myClubId) {
+      setErr("No tienes club activo en sesión.");
+      return;
+    }
+
+    if (validationMessage) {
+      setErr(validationMessage);
+      return;
+    }
+
+    const payload = playerStats
+      .filter((ps) => ps.user && ps.club)
+      .map((ps) => ({
+        user: ps.user,
+        club: ps.club,
+        goals: Number(ps.goals || 0),
+        assists: Number(ps.assists || 0),
+      }));
+
+    try {
+      setSaving(true);
+
+      await api.patch(`/matches/${id}/clubs/${myClubId}/player-stats`, {
         strictTotals: true,
-        playerStats: cleaned,
+        playerStats: payload,
       });
 
-      setOk("✅ Stats guardados correctamente.");
-    } catch (e) {
-      setErr(e?.response?.data?.message || e.message);
+      setOk("✅ playerStats actualizados correctamente.");
+    } catch (e2) {
+      setErr(e2?.response?.data?.message || e2.message);
     } finally {
       setSaving(false);
     }
   };
 
+  // -----------------------------
+  // UI
+  // -----------------------------
   if (loading) {
-    return (
-      <div className="rounded-2xl bg-black/30 ring-1 ring-[var(--fifa-line)] p-6 text-[var(--fifa-mute)]">
-        Cargando match...
-      </div>
-    );
+    return <div className="p-4">Cargando partido...</div>;
   }
 
-  if (err) {
+  if (!match) {
     return (
-      <div className="rounded-2xl bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-6 text-[var(--fifa-danger)]">
-        Error: {err}
+      <div className="p-4 text-red-400">
+        No se pudo cargar la información del partido.
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl bg-[var(--fifa-card)] ring-1 ring-[var(--fifa-line)] shadow-glow p-6">
-        <h1 className="text-3xl font-extrabold tracking-tight text-[var(--fifa-text)]">
-          Editar Stats del Partido
-        </h1>
-        <p className="mt-1 text-[var(--fifa-mute)]">
-          {match?.homeClub?.name} vs {match?.awayClub?.name} — {match?.scoreHome}-{match?.scoreAway}
+      <div>
+        <h1 className="text-2xl font-bold">Editar Player Stats</h1>
+        <p className="text-sm opacity-80">
+          Ajusta goles y asistencias del partido.
         </p>
-
-        {ok ? (
-          <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-neon)]/40 p-3 text-sm text-[var(--fifa-text)]">
-            {ok}
-          </div>
-        ) : null}
-
-        {err ? (
-          <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
-            {err}
-          </div>
-        ) : null}
       </div>
 
-      <div className="rounded-2xl bg-[var(--fifa-card)] ring-1 ring-[var(--fifa-line)] shadow-glow p-6">
-        <div className="text-xs font-semibold tracking-widest text-[var(--fifa-cyan)]">PLAYER STATS</div>
-        <div className="text-sm text-[var(--fifa-mute)] mt-1">
-          Se valida contra el marcador del partido.
+      <div className="rounded-2xl border p-4 space-y-2">
+        <div>
+          <strong>Partido:</strong>{" "}
+          {match?.homeClub?.name || "Home"} vs {match?.awayClub?.name || "Away"}
         </div>
-
-        <div className="mt-4">
-          <StatsTable
-            roster={roster}
-            homeClubId={homeClubId}
-            awayClubId={awayClubId}
-            value={playerStats}
-            onChange={setPlayerStats}
-          />
+        <div>
+          <strong>Marcador:</strong> {scoreHome} - {scoreAway}
         </div>
-
-        <button
-          onClick={save}
-          disabled={saving}
-          className="mt-5 w-full rounded-xl px-4 py-3 text-sm font-semibold bg-[var(--fifa-blue)] text-white hover:opacity-90 active:opacity-80 disabled:opacity-60"
-        >
-          {saving ? "Guardando..." : "Guardar Stats"}
-        </button>
+        <div>
+          <strong>Fecha:</strong> {match?.date}
+        </div>
+        <div>
+          <strong>Estadio:</strong> {match?.stadium}
+        </div>
       </div>
-    </div>
-  );
-}
 
-function StatsTable({ roster, homeClubId, awayClubId, value, onChange }) {
-  const rows = Array.isArray(value) ? value : [];
+      {err ? (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm">
+          {err}
+        </div>
+      ) : null}
 
-  const setRow = (userId, patch) => {
-    const exists = rows.some((r) => r.user === userId);
-    const next = exists
-      ? rows.map((r) => (r.user === userId ? { ...r, ...patch } : r))
-      : [...rows, { user: userId, club: homeClubId || awayClubId, goals: 0, assists: 0, ...patch }];
+      {ok ? (
+        <div className="rounded-xl border border-green-500/40 bg-green-500/10 p-3 text-sm">
+          {ok}
+        </div>
+      ) : null}
 
-    onChange(next);
-  };
+      {!err && validationMessage ? (
+        <div className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm">
+          {validationMessage}
+        </div>
+      ) : null}
 
-  const clubChoices = [
-    { id: homeClubId, label: "Home" },
-    { id: awayClubId, label: "Away" },
-  ].filter((c) => !!c.id);
-
-  if (!roster || roster.length === 0) {
-    return (
-      <div className="text-[var(--fifa-mute)] text-sm">
-        Este match no tiene jugadores en playerStats todavía.
-        <br />
-        Para editar aquí, primero debes haber guardado al menos 1 fila en playerStats (o usar CreateMatch con roster conectado).
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-auto rounded-xl ring-1 ring-[var(--fifa-line)]">
-      <table className="min-w-full text-sm fifa-table">
-        <thead>
-          <tr>
-            <th>Jugador</th>
-            <th className="num">Club</th>
-            <th className="num">Goles</th>
-            <th className="num">Asist</th>
-          </tr>
-        </thead>
-        <tbody>
-          {roster.map((p) => {
-            const r = rows.find((x) => x.user === p._id) || { user: p._id, club: homeClubId || awayClubId, goals: 0, assists: 0 };
-            return (
-              <tr key={p._id}>
-                <td style={{ fontWeight: 700 }}>{p.gamerTag || p.username}</td>
-                <td className="num">
-                  <select
-                    className="rounded-lg bg-black/30 ring-1 ring-[var(--fifa-line)] px-2 py-1 text-[var(--fifa-text)]"
-                    value={r.club || ""}
-                    onChange={(e) => setRow(p._id, { club: e.target.value })}
-                  >
-                    <option value="">—</option>
-                    {clubChoices.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td className="num">
-                  <input
-                    type="number"
-                    min="0"
-                    className="w-20 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-line)] px-2 py-1 text-right text-[var(--fifa-text)]"
-                    value={r.goals}
-                    onChange={(e) => setRow(p._id, { goals: Number(e.target.value || 0) })}
-                  />
-                </td>
-                <td className="num">
-                  <input
-                    type="number"
-                    min="0"
-                    className="w-20 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-line)] px-2 py-1 text-right text-[var(--fifa-text)]"
-                    value={r.assists}
-                    onChange={(e) => setRow(p._id, { assists: Number(e.target.value || 0) })}
-                  />
-                </td>
+      <form onSubmit={onSubmit} className="rounded-2xl border p-4">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b text-left">
+                <th className="p-2">Jugador</th>
+                <th className="p-2">Club</th>
+                <th className="p-2">Goles</th>
+                <th className="p-2">Asistencias</th>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {playerStats.map((ps, index) => (
+                <tr key={`${ps.user}-${index}`} className="border-b">
+                  <td className="p-2">
+                    {ps.gamerTag || ps.username || "Jugador"}
+                  </td>
+
+                  <td className="p-2">
+                    <select
+                      value={ps.club}
+                      onChange={(e) =>
+                        setRow(index, { club: e.target.value })
+                      }
+                      className="rounded-lg border bg-transparent p-2"
+                    >
+                      <option value="">Selecciona club</option>
+                      {clubChoices.map((club) => (
+                        <option key={club.id} value={club.id}>
+                          {club.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+
+                  <td className="p-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={ps.goals}
+                      onChange={(e) =>
+                        setRow(index, {
+                          goals: Number(e.target.value || 0),
+                        })
+                      }
+                      className="w-24 rounded-lg border bg-transparent p-2"
+                    />
+                  </td>
+
+                  <td className="p-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={ps.assists}
+                      onChange={(e) =>
+                        setRow(index, {
+                          assists: Number(e.target.value || 0),
+                        })
+                      }
+                      className="w-24 rounded-lg border bg-transparent p-2"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-4 flex items-center gap-4">
+          <button
+            type="submit"
+            disabled={saving || !!validationMessage}
+            className="rounded-xl border px-4 py-2 disabled:opacity-50"
+          >
+            {saving ? "Guardando..." : "Guardar Player Stats"}
+          </button>
+
+          <div className="text-sm opacity-80">
+            Totales actuales: Home {totals.homeGoals} / Away {totals.awayGoals}
+          </div>
+        </div>
+      </form>
     </div>
   );
 }
