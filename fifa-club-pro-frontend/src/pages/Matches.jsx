@@ -354,52 +354,57 @@ export default function Matches() {
   };
 
   const onCreate = async (e) => {
-    e.preventDefault();
-    setFormErr("");
-    setFormOk("");
+  e.preventDefault();
+  setFormErr("");
+  setFormOk("");
 
-    const msg = validate();
-    if (msg) {
-      setFormErr(msg);
-      return;
-    }
+  const msg = validate();
+  if (msg) {
+    setFormErr(msg);
+    return;
+  }
 
-    const payloadPlayerStats = playerStats
-      .map((ps) => ({
-        user: ps.user,
-        club: myClubSelectedSideId,
-        goals: Number(ps.goals || 0),
-        assists: Number(ps.assists || 0),
-      }))
-      .filter((ps) => ps.user && ps.club);
+  if (!myClubId) {
+    setFormErr("No tienes club activo en sesión.");
+    return;
+  }
 
-    try {
-      setSaving(true);
+  const payloadPlayerStats = playerStats
+    .map((ps) => ({
+      user: ps.user,
+      club: myClubSelectedSideId,
+      goals: Number(ps.goals || 0),
+      assists: Number(ps.assists || 0),
+    }))
+    .filter((ps) => ps.user && ps.club);
 
-      await api.post("/matches", {
-        homeClub,
-        awayClub,
-        date,
-        stadium,
-        scoreHome: Number(scoreHome),
-        scoreAway: Number(scoreAway),
-        playerStats: payloadPlayerStats,
-      });
+  try {
+    setSaving(true);
 
-      setFormOk("✅ Partido creado con playerStats de tu club.");
-      setDate("");
-      setStadium("");
-      setScoreHome(0);
-      setScoreAway(0);
-      setPlayerStats([emptyPS(myClubSelectedSideId || myClubId || "")]);
+    await api.post(`/matches/clubs/${myClubId}`, {
+      homeClub,
+      awayClub,
+      date,
+      stadium,
+      scoreHome: Number(scoreHome),
+      scoreAway: Number(scoreAway),
+      playerStats: payloadPlayerStats,
+    });
 
-      await loadMyMatches();
-    } catch (e2) {
-      setFormErr(e2?.response?.data?.message || e2.message);
-    } finally {
-      setSaving(false);
-    }
-  };
+    setFormOk("✅ Partido creado con playerStats de tu club.");
+    setDate("");
+    setStadium("");
+    setScoreHome(0);
+    setScoreAway(0);
+    setPlayerStats([emptyPS(myClubSelectedSideId || myClubId || "")]);
+
+    await loadMyMatches();
+  } catch (e2) {
+    setFormErr(e2?.response?.data?.message || e2.message);
+  } finally {
+    setSaving(false);
+  }
+};
 
   // =========================
   // Helpers editar partido
@@ -427,45 +432,50 @@ export default function Matches() {
   };
 
   const saveEditMatch = async (e) => {
-    e.preventDefault();
-    setEditMatchErr("");
-    setEditMatchOk("");
+  e.preventDefault();
+  setEditMatchErr("");
+  setEditMatchOk("");
 
-    if (
-      !editMatch.homeClub ||
-      !editMatch.awayClub ||
-      !editMatch.date ||
-      !editMatch.stadium
-    ) {
-      setEditMatchErr("Todos los campos del partido son obligatorios.");
-      return;
-    }
+  if (
+    !editMatch.homeClub ||
+    !editMatch.awayClub ||
+    !editMatch.date ||
+    !editMatch.stadium
+  ) {
+    setEditMatchErr("Todos los campos del partido son obligatorios.");
+    return;
+  }
 
-    if (editMatch.homeClub === editMatch.awayClub) {
-      setEditMatchErr("homeClub y awayClub no pueden ser el mismo.");
-      return;
-    }
+  if (editMatch.homeClub === editMatch.awayClub) {
+    setEditMatchErr("homeClub y awayClub no pueden ser el mismo.");
+    return;
+  }
 
-    try {
-      setEditMatch((prev) => ({ ...prev, saving: true }));
+  if (!myClubId) {
+    setEditMatchErr("No tienes club activo en sesión.");
+    return;
+  }
 
-      await api.put(`/matches/${editMatch.matchId}`, {
-        homeClub: editMatch.homeClub,
-        awayClub: editMatch.awayClub,
-        date: editMatch.date,
-        stadium: editMatch.stadium,
-        scoreHome: Number(editMatch.scoreHome),
-        scoreAway: Number(editMatch.scoreAway),
-      });
+  try {
+    setEditMatch((prev) => ({ ...prev, saving: true }));
 
-      setEditMatchOk("✅ Partido actualizado.");
-      await loadMyMatches();
-    } catch (e) {
-      setEditMatchErr(e?.response?.data?.message || e.message);
-    } finally {
-      setEditMatch((prev) => ({ ...prev, saving: false }));
-    }
-  };
+    await api.put(`/matches/${editMatch.matchId}/clubs/${myClubId}`, {
+      homeClub: editMatch.homeClub,
+      awayClub: editMatch.awayClub,
+      date: editMatch.date,
+      stadium: editMatch.stadium,
+      scoreHome: Number(editMatch.scoreHome),
+      scoreAway: Number(editMatch.scoreAway),
+    });
+
+    setEditMatchOk("✅ Partido actualizado.");
+    await loadMyMatches();
+  } catch (e) {
+    setEditMatchErr(e?.response?.data?.message || e.message);
+  } finally {
+    setEditMatch((prev) => ({ ...prev, saving: false }));
+  }
+};
 
   // =========================
   // Helpers editar stats
@@ -632,66 +642,77 @@ export default function Matches() {
   };
 
   const saveEditStats = async (e) => {
-    e.preventDefault();
-    setEditStatsErr("");
-    setEditStatsOk("");
+  e.preventDefault();
+  setEditStatsErr("");
+  setEditStatsOk("");
 
-    const msg = validateEditStats();
-    if (msg) {
-      setEditStatsErr(msg);
-      return;
-    }
+  const msg = validateEditStats();
+  if (msg) {
+    setEditStatsErr(msg);
+    return;
+  }
 
-    const myStatsPayload = editStats.playerStats
-      .map((ps) => ({
-        user: ps.user,
-        club: editStats.myClubSideId,
-        goals: Number(ps.goals || 0),
-        assists: Number(ps.assists || 0),
-      }))
-      .filter((ps) => ps.user);
+  if (!myClubId) {
+    setEditStatsErr("No tienes club activo en sesión.");
+    return;
+  }
 
-    const rivalStatsPayload = editStats.rivalPlayerStats.map((ps) => ({
+  const myStatsPayload = editStats.playerStats
+    .map((ps) => ({
       user: ps.user,
-      club: ps.club,
+      club: editStats.myClubSideId,
       goals: Number(ps.goals || 0),
       assists: Number(ps.assists || 0),
-    }));
+    }))
+    .filter((ps) => ps.user);
 
-    const fullPayload = [...myStatsPayload, ...rivalStatsPayload];
+  const rivalStatsPayload = editStats.rivalPlayerStats.map((ps) => ({
+    user: ps.user,
+    club: ps.club,
+    goals: Number(ps.goals || 0),
+    assists: Number(ps.assists || 0),
+  }));
 
-    try {
-      setEditStats((prev) => ({ ...prev, saving: true }));
+  const fullPayload = [...myStatsPayload, ...rivalStatsPayload];
 
-      await api.patch(`/matches/${editStats.matchId}/player-stats`, {
+  try {
+    setEditStats((prev) => ({ ...prev, saving: true }));
+
+    await api.patch(
+      `/matches/${editStats.matchId}/clubs/${myClubId}/player-stats`,
+      {
         strictTotals: true,
         playerStats: fullPayload,
-      });
+      }
+    );
 
-      setEditStatsOk("✅ playerStats actualizados.");
-      await loadMyMatches();
-    } catch (e) {
-      setEditStatsErr(e?.response?.data?.message || e.message);
-    } finally {
-      setEditStats((prev) => ({ ...prev, saving: false }));
-    }
-  };
-
+    setEditStatsOk("✅ playerStats actualizados.");
+    await loadMyMatches();
+  } catch (e) {
+    setEditStatsErr(e?.response?.data?.message || e.message);
+  } finally {
+    setEditStats((prev) => ({ ...prev, saving: false }));
+  }
+};
   // =========================
   // Eliminar partido
   // =========================
   const handleDeleteMatch = async (matchId) => {
-    const confirmed = window.confirm("¿Seguro que quieres eliminar este partido?");
-    if (!confirmed) return;
+  const confirmed = window.confirm("¿Seguro que quieres eliminar este partido?");
+  if (!confirmed) return;
 
-    try {
-      await api.delete(`/matches/${matchId}`);
-      await loadMyMatches();
-    } catch (e) {
-      setMatchesErr(e?.response?.data?.message || e.message);
-    }
-  };
+  if (!myClubId) {
+    setMatchesErr("No tienes club activo en sesión.");
+    return;
+  }
 
+  try {
+    await api.delete(`/matches/${matchId}/clubs/${myClubId}`);
+    await loadMyMatches();
+  } catch (e) {
+    setMatchesErr(e?.response?.data?.message || e.message);
+  }
+};
   // =========================
   // Resúmenes
   // =========================
