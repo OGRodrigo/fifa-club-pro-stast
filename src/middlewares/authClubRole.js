@@ -1,96 +1,79 @@
 const Club = require("../models/Club");
 
 /**
- * =====================================================
- * REQUIRE CLUB ROLE (Middleware)
- * -----------------------------------------------------
- * - Valida que un usuario pertenezca a un club
- * - Verifica que tenga uno de los roles permitidos
- * - Inyecta `req.actor` y `req.club`
- *
- * REQUIERE que antes se ejecute el middleware `auth`
- * (el que setea req.user desde el JWT)
+ * Middleware:
+ * valida que el usuario autenticado pertenezca al club
+ * y que tenga uno de los roles permitidos.
  *
  * Uso:
- * router.post("/clubs/:clubId/...", auth, requireClubRole(["admin"]), handler)
- * =====================================================
- *
- * @param {Array<string>} allowedRoles - Roles permitidos
+ * requireClubRole(["admin"])
+ * requireClubRole(["admin", "captain"])
  */
-const requireClubRole = (allowedRoles = []) => {
+function requireClubRole(allowedRoles = []) {
   return async (req, res, next) => {
     try {
-      // -------------------------------------------------
-      // 1) Validar que venga usuario autenticado por JWT
-      // -------------------------------------------------
-      const actorUserId = req.user?.id; // ✅ desde JWT
       const { clubId } = req.params;
 
-      if (!actorUserId) {
+      // Compatibilidad con distintas formas del user id
+      const userId = req.user?.sub || req.user?.id || req.user?._id;
+
+      if (!userId) {
         return res.status(401).json({
-          message: "No autenticado (falta token o req.user)"
+          message: "Usuario no autenticado",
         });
       }
 
       if (!clubId) {
         return res.status(400).json({
-          message: "Falta clubId en params"
+          message: "Falta clubId en la ruta",
         });
       }
 
-      // -------------------------------------------------
-      // 2) Buscar club
-      // -------------------------------------------------
-      const club = await Club.findById(clubId);
+      if (!Array.isArray(allowedRoles) || allowedRoles.length === 0) {
+        return res.status(500).json({
+          message: "Configuración inválida de roles permitidos",
+        });
+      }
+
+      const club = await Club.findById(clubId).select("members");
+
       if (!club) {
         return res.status(404).json({
-          message: "Club no encontrado"
+          message: "Club no encontrado",
         });
       }
 
-      // -------------------------------------------------
-      // 3) Verificar membresía del usuario
-      // -------------------------------------------------
-      const member = club.members.find(
-        (m) => m.user.toString() === actorUserId.toString()
+      const membership = club.members.find(
+        (member) => String(member.user) === String(userId)
       );
 
-      if (!member) {
+      if (!membership) {
         return res.status(403).json({
-          message: "No eres miembro del club"
+          message: "No perteneces a este club",
         });
       }
 
-      // -------------------------------------------------
-      // 4) Verificar rol (si allowedRoles viene vacío, permite)
-      // -------------------------------------------------
-      if (allowedRoles.length > 0 && !allowedRoles.includes(member.role)) {
+      if (!allowedRoles.includes(membership.role)) {
         return res.status(403).json({
-          message: "No tienes permisos",
+          message: "No tienes permisos para realizar esta acción",
           requiredRoles: allowedRoles,
-          yourRole: member.role
+          currentRole: membership.role,
         });
       }
 
-      // -------------------------------------------------
-      // 5) Inyectar contexto al request (igual que antes)
-      // -------------------------------------------------
-      req.actor = {
-        userId: actorUserId,
-        role: member.role
-      };
+      // Contexto útil para controladores posteriores
+      req.clubMembership = membership;
+      req.clubRole = membership.role;
+      req.clubId = clubId;
 
-      req.club = club;
-
-      return next();
+      next();
     } catch (error) {
-      console.error("REQUIRE CLUB ROLE ERROR:", error);
+      console.error("ERROR requireClubRole:", error);
       return res.status(500).json({
-        message: "Error en validación de permisos",
-        error: error.message
+        message: "Error validando permisos del club",
       });
     }
   };
-};
+}
 
 module.exports = { requireClubRole };
