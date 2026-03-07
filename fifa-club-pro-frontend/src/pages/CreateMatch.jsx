@@ -1,34 +1,32 @@
-// src/pages/CreateMatch.jsx
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
 /**
- * CreateMatch (versión segura)
- * - POST /matches  (crea match SIN stats)
- * - PATCH /matches/:id/player-stats (guarda stats)
+ * CreateMatch (versión alineada con backend seguro)
+ * - POST   /matches/clubs/:clubId
+ * - PATCH  /matches/:id/clubs/:clubId/player-stats
  *
- * Roster REAL:
- * - GET /clubs/:clubId/members  => { club, members: [{ user, role }] }
+ * Roster real:
+ * - GET /clubs/:clubId/members
  *
- * IMPORTANTÍSIMO:
- * - playerStats.club debe ser homeClub o awayClub (tu backend lo valida).
- * - NO usamos clubContext como club del stat.
+ * Reglas importantes:
+ * - playerStats.club debe ser homeClub o awayClub
+ * - el club autenticado debe venir en la ruta segura
  */
-
 export default function CreateMatch() {
   const { clubContext } = useAuth();
-  const clubContextId = clubContext?.clubId; // solo para fallback de UI, no para stats
+  const clubContextId = clubContext?.clubId || "";
 
-  // clubs
+  // Clubs
   const [clubs, setClubs] = useState([]);
   const [clubsErr, setClubsErr] = useState("");
 
-  // roster
-  const [roster, setRoster] = useState([]); // [{ _id, username, gamerTag, defaultClub }]
+  // Roster
+  const [roster, setRoster] = useState([]);
   const [rosterErr, setRosterErr] = useState("");
 
-  // form match
+  // Form match
   const [homeClub, setHomeClub] = useState("");
   const [awayClub, setAwayClub] = useState("");
   const [date, setDate] = useState("");
@@ -36,7 +34,7 @@ export default function CreateMatch() {
   const [scoreHome, setScoreHome] = useState(0);
   const [scoreAway, setScoreAway] = useState(0);
 
-  // stats
+  // Stats
   const [playerStats, setPlayerStats] = useState([]);
 
   // UI
@@ -44,7 +42,9 @@ export default function CreateMatch() {
   const [err, setErr] = useState("");
   const [createdId, setCreatedId] = useState("");
 
-  // --- carga clubs ---
+  // ------------------------------
+  // Cargar clubs
+  // ------------------------------
   useEffect(() => {
     let alive = true;
 
@@ -61,12 +61,15 @@ export default function CreateMatch() {
     }
 
     loadClubs();
+
     return () => {
       alive = false;
     };
   }, []);
 
-  // --- carga roster REAL basado en home/away ---
+  // ------------------------------
+  // Cargar roster real desde members
+  // ------------------------------
   useEffect(() => {
     let alive = true;
 
@@ -74,16 +77,16 @@ export default function CreateMatch() {
       const res = await api.get(`/clubs/${clubId}/members`);
       const members = Array.isArray(res.data?.members) ? res.data.members : [];
 
-      // members: [{ user: { _id, username, gamerTag }, role }]
       return members
         .map((m) => {
           const u = m?.user;
           if (!u?._id) return null;
+
           return {
             _id: u._id,
             username: u.username || "unknown",
             gamerTag: u.gamerTag || "",
-            defaultClub: clubId, // ✅ club correcto para stats
+            defaultClub: clubId,
           };
         })
         .filter(Boolean);
@@ -96,6 +99,7 @@ export default function CreateMatch() {
         setPlayerStats([]);
 
         if (!homeClub || !awayClub) return;
+
         if (homeClub === awayClub) {
           setRosterErr("Home y Away no pueden ser el mismo club.");
           return;
@@ -106,17 +110,16 @@ export default function CreateMatch() {
           fetchMembersAsPlayers(awayClub),
         ]);
 
-        // unir (permitimos mismo usuario en ambos clubes, pero no es común)
         const combined = [...homePlayers, ...awayPlayers];
 
         if (!alive) return;
+
         setRoster(combined);
 
-        // inicializa playerStats basado en roster (club correcto por defecto)
         setPlayerStats(
           combined.map((p) => ({
             user: p._id,
-            club: p.defaultClub, // ✅ homeClub o awayClub
+            club: p.defaultClub,
             goals: 0,
             assists: 0,
           }))
@@ -128,12 +131,15 @@ export default function CreateMatch() {
     }
 
     loadRoster();
+
     return () => {
       alive = false;
     };
   }, [homeClub, awayClub]);
 
-  // helpers
+  // ------------------------------
+  // Helpers
+  // ------------------------------
   const clubOptions = useMemo(
     () => clubs.map((c) => ({ id: c._id, name: c.name })),
     [clubs]
@@ -148,42 +154,53 @@ export default function CreateMatch() {
     Number.isFinite(Number(scoreHome)) &&
     Number.isFinite(Number(scoreAway));
 
+  // ------------------------------
+  // Submit
+  // ------------------------------
   const onSubmit = async (e) => {
     e.preventDefault();
+
     if (!canSubmit) return;
+
+    if (!clubContextId) {
+      setErr("No tienes club activo en sesión.");
+      return;
+    }
 
     setSaving(true);
     setErr("");
     setCreatedId("");
 
     try {
-      // 1) crear match
-      const createRes = await api.post("/matches", {
+      // 1) Crear match por ruta segura
+      const createRes = await api.post(`/matches/clubs/${clubContextId}`, {
         homeClub,
         awayClub,
         date,
         stadium,
         scoreHome: Number(scoreHome),
         scoreAway: Number(scoreAway),
-        playerStats: [], // ✅ no mandamos stats en create
+        playerStats: [],
       });
 
       const matchId = createRes.data?._id;
-      if (!matchId) throw new Error("No se recibió _id del match creado");
+      if (!matchId) {
+        throw new Error("No se recibió _id del match creado");
+      }
 
-      // 2) guardar stats
+      // 2) Guardar stats por ruta segura
       const cleanedStats = Array.isArray(playerStats)
         ? playerStats
             .filter((ps) => ps.user && ps.club)
             .map((ps) => ({
               user: ps.user,
-              club: ps.club, // ✅ debe ser home o away
+              club: ps.club,
               goals: Number(ps.goals || 0),
               assists: Number(ps.assists || 0),
             }))
         : [];
 
-      await api.patch(`/matches/${matchId}/player-stats`, {
+      await api.patch(`/matches/${matchId}/clubs/${clubContextId}/player-stats`, {
         strictTotals: true,
         playerStats: cleanedStats,
       });
@@ -198,50 +215,44 @@ export default function CreateMatch() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl bg-[var(--fifa-card)] ring-1 ring-[var(--fifa-line)] shadow-glow p-6">
-        <h1 className="text-3xl font-extrabold tracking-tight text-[var(--fifa-text)]">
-          Crear Partido
-        </h1>
-        <p className="mt-1 text-[var(--fifa-mute)]">
+      <div>
+        <h1 className="text-2xl font-bold">Crear Partido</h1>
+        <p className="text-sm opacity-80">
           Crea el match y registra goles/asistencias por jugador.
         </p>
-
-        {clubsErr ? (
-          <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
-            Error clubs: {clubsErr}
-          </div>
-        ) : null}
-
-        {rosterErr ? (
-          <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
-            Error roster: {rosterErr}
-          </div>
-        ) : null}
-
-        {err ? (
-          <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
-            {err}
-          </div>
-        ) : null}
-
-        {createdId ? (
-          <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-neon)]/40 p-3 text-sm text-[var(--fifa-text)]">
-            ✅ Match creado y stats guardados. ID:{" "}
-            <span className="text-[var(--fifa-neon)] font-semibold">{createdId}</span>
-          </div>
-        ) : null}
       </div>
 
-      <form
-        onSubmit={onSubmit}
-        className="rounded-2xl bg-[var(--fifa-card)] ring-1 ring-[var(--fifa-line)] shadow-glow p-6 space-y-5"
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Local (homeClub)">
+      {clubsErr ? (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm">
+          Error clubs: {clubsErr}
+        </div>
+      ) : null}
+
+      {rosterErr ? (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm">
+          Error roster: {rosterErr}
+        </div>
+      ) : null}
+
+      {err ? (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm">
+          {err}
+        </div>
+      ) : null}
+
+      {createdId ? (
+        <div className="rounded-xl border border-green-500/40 bg-green-500/10 p-3 text-sm">
+          ✅ Match creado y stats guardados. ID: {createdId}
+        </div>
+      ) : null}
+
+      <form onSubmit={onSubmit} className="space-y-6 rounded-2xl border p-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Home Club">
             <select
-              className="w-full rounded-xl bg-black/30 ring-1 ring-[var(--fifa-line)] p-3 text-[var(--fifa-text)]"
               value={homeClub}
               onChange={(e) => setHomeClub(e.target.value)}
+              className="w-full rounded-xl border bg-transparent p-2"
             >
               <option value="">Selecciona club</option>
               {clubOptions.map((c) => (
@@ -252,11 +263,11 @@ export default function CreateMatch() {
             </select>
           </Field>
 
-          <Field label="Visita (awayClub)">
+          <Field label="Away Club">
             <select
-              className="w-full rounded-xl bg-black/30 ring-1 ring-[var(--fifa-line)] p-3 text-[var(--fifa-text)]"
               value={awayClub}
               onChange={(e) => setAwayClub(e.target.value)}
+              className="w-full rounded-xl border bg-transparent p-2"
             >
               <option value="">Selecciona club</option>
               {clubOptions.map((c) => (
@@ -269,67 +280,63 @@ export default function CreateMatch() {
 
           <Field label="Fecha">
             <input
-              type="date"
-              className="w-full rounded-xl bg-black/30 ring-1 ring-[var(--fifa-line)] p-3 text-[var(--fifa-text)]"
+              type="datetime-local"
               value={date}
               onChange={(e) => setDate(e.target.value)}
+              className="w-full rounded-xl border bg-transparent p-2"
             />
           </Field>
 
           <Field label="Estadio">
             <input
-              type="text"
-              className="w-full rounded-xl bg-black/30 ring-1 ring-[var(--fifa-line)] p-3 text-[var(--fifa-text)]"
               value={stadium}
               onChange={(e) => setStadium(e.target.value)}
               placeholder="Estadio Nacional"
+              className="w-full rounded-xl border bg-transparent p-2"
             />
           </Field>
 
-          <Field label="Marcador Local">
+          <Field label="Score Home">
             <input
               type="number"
               min="0"
-              className="w-full rounded-xl bg-black/30 ring-1 ring-[var(--fifa-line)] p-3 text-[var(--fifa-text)]"
               value={scoreHome}
               onChange={(e) => setScoreHome(e.target.value)}
+              className="w-full rounded-xl border bg-transparent p-2"
             />
           </Field>
 
-          <Field label="Marcador Visita">
+          <Field label="Score Away">
             <input
               type="number"
               min="0"
-              className="w-full rounded-xl bg-black/30 ring-1 ring-[var(--fifa-line)] p-3 text-[var(--fifa-text)]"
               value={scoreAway}
               onChange={(e) => setScoreAway(e.target.value)}
+              className="w-full rounded-xl border bg-transparent p-2"
             />
           </Field>
         </div>
 
-        <div className="rounded-2xl bg-black/20 ring-1 ring-[var(--fifa-line)] p-4">
-          <div className="text-xs font-semibold tracking-widest text-[var(--fifa-cyan)]">
-            PLAYER STATS
-          </div>
-          <div className="text-sm text-[var(--fifa-mute)] mt-1">
-            Roster real cargado desde <b>/clubs/:id/members</b>.
-          </div>
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold">PLAYER STATS</h2>
+          <p className="text-sm opacity-80">
+            Roster real cargado desde /clubs/:id/members.
+          </p>
 
-          <div className="mt-4">
-            <PlayerStatsEditor
-              roster={roster}
-              homeClubId={homeClub}
-              awayClubId={awayClub}
-              clubFallbackId={clubContextId}
-              value={playerStats}
-              onChange={setPlayerStats}
-            />
-          </div>
+          <PlayerStatsEditor
+            roster={roster}
+            homeClubId={homeClub}
+            awayClubId={awayClub}
+            clubFallbackId={clubContextId}
+            value={playerStats}
+            onChange={setPlayerStats}
+          />
         </div>
 
         <button
-          disabled={!canSubmit || saving}
-          className="w-full rounded-xl px-4 py-3 text-sm font-semibold bg-[var(--fifa-blue)] text-white hover:opacity-90 active:opacity-80 disabled:opacity-60"
+          type="submit"
+          disabled={saving || !canSubmit}
+          className="rounded-xl border px-4 py-2 disabled:opacity-50"
         >
           {saving ? "Guardando..." : "Crear Partido + Guardar Stats"}
         </button>
@@ -340,14 +347,21 @@ export default function CreateMatch() {
 
 function Field({ label, children }) {
   return (
-    <label className="block">
-      <div className="text-xs text-[var(--fifa-mute)] mb-2">{label}</div>
+    <label className="space-y-1">
+      <div className="text-sm font-medium">{label}</div>
       {children}
     </label>
   );
 }
 
-function PlayerStatsEditor({ roster, homeClubId, awayClubId, clubFallbackId, value, onChange }) {
+function PlayerStatsEditor({
+  roster,
+  homeClubId,
+  awayClubId,
+  clubFallbackId,
+  value,
+  onChange,
+}) {
   const rows = Array.isArray(value) ? value : [];
 
   const setRow = (userId, patch) => {
@@ -357,7 +371,7 @@ function PlayerStatsEditor({ roster, homeClubId, awayClubId, clubFallbackId, val
 
   if (!roster || roster.length === 0) {
     return (
-      <div className="text-[var(--fifa-mute)] text-sm">
+      <div className="rounded-xl border p-3 text-sm opacity-80">
         Selecciona home/away para cargar roster real.
       </div>
     );
@@ -369,14 +383,14 @@ function PlayerStatsEditor({ roster, homeClubId, awayClubId, clubFallbackId, val
   ].filter((c) => !!c.id);
 
   return (
-    <div className="overflow-auto rounded-xl ring-1 ring-[var(--fifa-line)]">
-      <table className="min-w-full text-sm fifa-table">
+    <div className="overflow-x-auto rounded-xl border">
+      <table className="min-w-full text-sm">
         <thead>
-          <tr>
-            <th>Jugador</th>
-            <th className="num">Club</th>
-            <th className="num">Goles</th>
-            <th className="num">Asist</th>
+          <tr className="border-b text-left">
+            <th className="p-2">Jugador</th>
+            <th className="p-2">Club</th>
+            <th className="p-2">Goles</th>
+            <th className="p-2">Asist</th>
           </tr>
         </thead>
         <tbody>
@@ -389,14 +403,13 @@ function PlayerStatsEditor({ roster, homeClubId, awayClubId, clubFallbackId, val
             };
 
             return (
-              <tr key={p._id}>
-                <td style={{ fontWeight: 700 }}>{p.gamerTag || p.username}</td>
-
-                <td className="num">
+              <tr key={p._id} className="border-b">
+                <td className="p-2">{p.gamerTag || p.username}</td>
+                <td className="p-2">
                   <select
-                    className="rounded-lg bg-black/30 ring-1 ring-[var(--fifa-line)] px-2 py-1 text-[var(--fifa-text)]"
-                    value={r.club || ""}
+                    value={r.club}
                     onChange={(e) => setRow(p._id, { club: e.target.value })}
+                    className="rounded-lg border bg-transparent p-2"
                   >
                     <option value="">—</option>
                     {clubChoices.map((c) => (
@@ -406,24 +419,26 @@ function PlayerStatsEditor({ roster, homeClubId, awayClubId, clubFallbackId, val
                     ))}
                   </select>
                 </td>
-
-                <td className="num">
+                <td className="p-2">
                   <input
                     type="number"
                     min="0"
-                    className="w-20 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-line)] px-2 py-1 text-right text-[var(--fifa-text)]"
                     value={r.goals}
-                    onChange={(e) => setRow(p._id, { goals: Number(e.target.value || 0) })}
+                    onChange={(e) =>
+                      setRow(p._id, { goals: Number(e.target.value || 0) })
+                    }
+                    className="w-24 rounded-lg border bg-transparent p-2"
                   />
                 </td>
-
-                <td className="num">
+                <td className="p-2">
                   <input
                     type="number"
                     min="0"
-                    className="w-20 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-line)] px-2 py-1 text-right text-[var(--fifa-text)]"
                     value={r.assists}
-                    onChange={(e) => setRow(p._id, { assists: Number(e.target.value || 0) })}
+                    onChange={(e) =>
+                      setRow(p._id, { assists: Number(e.target.value || 0) })
+                    }
+                    className="w-24 rounded-lg border bg-transparent p-2"
                   />
                 </td>
               </tr>
