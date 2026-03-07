@@ -18,17 +18,18 @@ const { requireClubRole } = require("../middlewares/authClubRole");
  * ======================
  */
 
+// Ping
 router.get("/ping", (req, res) => {
   return res.json({ ok: true, route: "/matches/ping" });
 });
 
-// 📅 Calendario
+// Calendario
 router.get("/calendar", matchesController.getCalendar);
 
-// 🤝 Head to Head
+// Head to Head
 router.get("/h2h/:clubA/:clubB", matchesController.getMatchesHeadToHead);
 
-// 📋 Lista partidos
+// Lista partidos
 router.get("/", matchesController.getMatches);
 
 /**
@@ -37,10 +38,7 @@ router.get("/", matchesController.getMatches);
  * ======================
  */
 
-// Crear partido público
-router.post("/", matchesController.createMatch);
-
-// Crear partido protegido (admin/captain)
+// Crear partido seguro (admin/captain)
 router.post(
   "/clubs/:clubId",
   auth,
@@ -54,9 +52,11 @@ router.post(
  * ======================
  */
 
+// Actualizar player stats seguro (admin/captain)
 router.patch(
-  "/:id/player-stats",
+  "/:id/clubs/:clubId/player-stats",
   auth,
+  requireClubRole(["admin", "captain"]),
   matchesController.updateMatchPlayerStats
 );
 
@@ -71,12 +71,6 @@ router.get("/:id/full", matchesController.getMatchByIdFull);
 
 // MVP partido
 router.get("/:id/mvp", matchesController.getMatchMVP);
-
-// Update partido
-router.put("/:id", matchesController.updateMatch);
-
-// Delete partido
-router.delete("/:id", matchesController.deleteMatch);
 
 // Update seguro
 router.put(
