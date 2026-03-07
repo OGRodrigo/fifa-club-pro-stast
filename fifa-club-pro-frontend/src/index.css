@@ -1,0 +1,230 @@
+/* src/index.css */
+
+/* ✅ Tailwind v4 */
+@import "tailwindcss";
+
+/* =========================
+   🎨 Paleta FIFA (variables)
+   - Esto NO depende de Tailwind config
+   - Lo puedes usar con: bg-[var(--fifa-bg)]
+   ========================= */
+:root {
+  --fifa-bg: #060b12;                 /* fondo base */
+  --fifa-bg2: #050a10;                /* más oscuro */
+  --fifa-card: rgba(255, 255, 255, 0.06);
+  --fifa-line: rgba(255, 255, 255, 0.12);
+
+  --fifa-text: rgba(255, 255, 255, 0.92);
+  --fifa-mute: rgba(255, 255, 255, 0.65);
+
+  --fifa-cyan: #36e6ff;               /* acento cian */
+  --fifa-neon: #24ff7a;               /* acento verde */
+  --fifa-blue: #1e6bff;               /* azul FIFA */
+  --fifa-danger: #ff4d6d;
+}
+
+/* ✅ Base global */
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--fifa-bg);
+  color: var(--fifa-text);
+}
+
+:root {
+  --font-title: "Teko", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  --font-ui: "Rajdhani", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  --font-tech: "Orbitron", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+body {
+  font-family: var(--font-ui);
+}
+
+h1, h2, h3, .fifa-title {
+  font-family: var(--font-title);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+
+/* =========================
+   ✅ Utilidades propias “tipo Tailwind”
+   - Esto evita el error bg-fifa-bg0
+   - Estas clases EXISTEN siempre
+   ========================= */
+@layer utilities {
+  /* Fondo radial estilo FIFA */
+  .bg-fifa-radial {
+    background:
+      radial-gradient(900px circle at 20% 0%, rgba(36,255,122,.16), transparent 55%),
+      radial-gradient(700px circle at 80% 15%, rgba(54,230,255,.14), transparent 50%),
+      linear-gradient(180deg, #060b12, #04070b);
+  }
+
+  /* Tarjeta estilo FIFA */
+  .bg-fifa-card {
+    background: linear-gradient(
+      180deg,
+      rgba(13,34,43,.92),
+      rgba(6,16,22,.92)
+    );
+  }
+
+  /* Sombras “glow” */
+  .shadow-glow {
+    box-shadow: 0 0 0 1px rgba(36,255,122,.18), 0 12px 30px rgba(0,0,0,.45);
+  }
+
+  .shadow-neon {
+    box-shadow: 0 0 22px rgba(36,255,122,.22);
+  }
+}
+
+
+/* ============================
+   FIX: Tabla liga (FIFA theme)
+   - Evita header blanco por CSS global
+   - Se aplica SOLO a la tabla que tenga class="league-table"
+   ============================ */
+
+.league-table {
+  background: transparent !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+}
+
+/* Header */
+.league-table thead,
+.league-table thead tr,
+.league-table thead th {
+  background: rgba(0, 0, 0, 0.75) !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* Celdas header (bonus: hace “FIFA feel”) */
+.league-table thead th {
+  letter-spacing: 0.12em !important;
+}
+
+/* Body */
+.league-table tbody td {
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+}
+
+/* Hover row */
+.league-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Puntos destacado */
+.league-table tbody td:last-child {
+  color: var(--fifa-cyan) !important;
+  font-weight: 800 !important;
+}
+
+/* =========================================================
+   ✅ FORCE FIFA TABLE HEADER (hard override)
+   Pégalo AL FINAL del index.css para que gane la cascada.
+   ========================================================= */
+table.fifa-table {
+  background: rgba(0, 0, 0, 0.22) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+}
+
+table.fifa-table > thead,
+table.fifa-table > thead > tr {
+  background: rgba(0, 0, 0, 0.75) !important;
+}
+
+table.fifa-table > thead > tr > th {
+  background: rgba(0, 0, 0, 0.75) !important;
+  color: rgba(255, 255, 255, 0.88) !important;
+  font-weight: 900 !important;
+  font-size: 12px !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10) !important;
+}
+
+table.fifa-table > tbody > tr > td {
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+table.fifa-table > tbody > tr:hover > td {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Destacar Pts */
+table.fifa-table > tbody > tr > td:last-child {
+  color: var(--fifa-cyan) !important;
+  font-weight: 900 !important;
+}
+
+/* ============================
+   FIFA TABLE FIX (Tailwind v4)
+   Se aplica SOLO a tables con class="league-table"
+   ============================ */
+
+table.league-table {
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  background: rgba(0,0,0,0.22) !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+}
+
+/* THEAD/TH: fuerza fondo y color (esto es lo que hoy te sale "blanco") */
+table.league-table thead,
+table.league-table thead tr {
+  background: rgba(0,0,0,0.75) !important;
+}
+
+table.league-table thead th {
+  background: rgba(0,0,0,0.75) !important;
+  color: rgba(255,255,255,0.85) !important;
+  font-weight: 800 !important;
+  font-size: 12px !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+  padding: 12px 12px !important;
+  border-bottom: 1px solid rgba(255,255,255,0.10) !important;
+}
+
+/* TBODY/TD */
+table.league-table tbody td {
+  background: transparent !important;
+  color: rgba(255,255,255,0.78) !important;
+  padding: 12px 12px !important;
+  border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+}
+
+table.league-table tbody tr:hover td {
+  background: rgba(255,255,255,0.04) !important;
+}
+
+table.league-table tbody tr:last-child td {
+  border-bottom: none !important;
+}
+
+/* Última columna (Pts) highlight FIFA */
+table.league-table tbody td:last-child {
+  color: var(--fifa-cyan) !important;
+  font-weight: 900 !important;
+}
+
+
+.match-card {
+  background: linear-gradient(180deg, rgba(13,34,43,.92), rgba(6,16,22,.92)) !important;
+  color: var(--fifa-text) !important;
+}
+.match-card * {
+  color: inherit;
+}
