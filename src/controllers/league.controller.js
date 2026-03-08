@@ -1,4 +1,3 @@
-// src/controllers/league.controller.js
 const Club = require("../models/Club");
 const Match = require("../models/Match");
 
@@ -135,8 +134,14 @@ const buildLeagueLeaderboards = (matches, limit = 10) => {
     topAssists,
     mvp,
     notes: {
-      topScorers: topScorers.length === 0 ? "Aún no hay goles registrados (playerStats vacío o sin goles)." : null,
-      topAssists: topAssists.length === 0 ? "Aún no hay asistencias registradas (playerStats vacío o sin asistencias)." : null,
+      topScorers:
+        topScorers.length === 0
+          ? "Aún no hay goles registrados (playerStats vacío o sin goles)."
+          : null,
+      topAssists:
+        topAssists.length === 0
+          ? "Aún no hay asistencias registradas (playerStats vacío o sin asistencias)."
+          : null,
       mvp: !mvp ? "Aún no hay MVP (playerStats vacío)." : null,
     },
   };
@@ -201,24 +206,50 @@ const buildClubExtras = ({ table, matches, limit = 5 }) => {
  * - table (top 10)
  * - recentMatches (últimos 8)
  * - leaderboards (goleadores / asistencias / mvp)
- * - extras (bestAttack / bestDefense / cleanSheets) ✅ NUEVO
+ * - extras (bestAttack / bestDefense / cleanSheets)
+ * - seasonUsed
+ * - availableSeasons
  * =====================================================
  */
 exports.getLeagueDashboard = async (req, res) => {
   try {
     const seasonParam = req.query?.season;
-    const season = seasonParam !== undefined && seasonParam !== "" ? Number(seasonParam) : null;
+    const parsedSeason =
+      seasonParam !== undefined && seasonParam !== "" ? Number(seasonParam) : null;
 
-    if (seasonParam !== undefined && seasonParam !== "" && Number.isNaN(season)) {
-      return res.status(400).json({ message: "Query 'season' inválida (debe ser número, ej: 2026)" });
+    if (
+      seasonParam !== undefined &&
+      seasonParam !== "" &&
+      Number.isNaN(parsedSeason)
+    ) {
+      return res.status(400).json({
+        message: "Query 'season' inválida (debe ser número, ej: 2026)",
+      });
     }
 
-    const clubs = await Club.find();
+    const [clubs, seasonsRaw] = await Promise.all([
+      Club.find(),
+      Match.distinct("season"),
+    ]);
+
+    const availableSeasons = seasonsRaw
+      .map((s) => Number(s))
+      .filter((n) => Number.isFinite(n))
+      .sort((a, b) => b - a);
+
+    // Si no viene season, usamos la más reciente disponible
+    const seasonUsed =
+      parsedSeason !== null
+        ? parsedSeason
+        : availableSeasons.length > 0
+        ? availableSeasons[0]
+        : null;
 
     const matchFilter = {};
-    if (season !== null) matchFilter.season = season;
+    if (seasonUsed !== null) {
+      matchFilter.season = seasonUsed;
+    }
 
-    // Matches para tabla + recientes + leaderboards
     const matches = await Match.find(matchFilter)
       .populate("homeClub", "name")
       .populate("awayClub", "name")
@@ -282,11 +313,13 @@ exports.getLeagueDashboard = async (req, res) => {
     // Leaderboards LIGA
     const leaderboards = buildLeagueLeaderboards(matches, 10);
 
-    // ✅ NUEVO: extras por club
+    // Extras por club
     const extras = buildClubExtras({ table, matches, limit: 5 });
 
     return res.status(200).json({
-      season: season ?? null,
+      season: seasonUsed,
+      seasonUsed,
+      availableSeasons,
       table: table.slice(0, 10),
       recentMatches,
       leaderboards,
