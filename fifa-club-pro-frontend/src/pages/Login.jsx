@@ -1,117 +1,268 @@
 // src/pages/Login.jsx
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { login as apiLogin } from "../api/auth";
+import { login as apiLogin, me as apiMe } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
 
+/**
+ * =====================================================
+ * LOGIN PAGE
+ * -----------------------------------------------------
+ * Responsabilidades:
+ * - capturar email/password
+ * - llamar POST /auth/login
+ * - guardar sesión con setSessionFromLogin(...)
+ * - si el login no trae clubContext, intentar resolverlo con /auth/me
+ * - redirigir a /home
+ *
+ * Este archivo queda alineado con:
+ * - src/api/auth.js
+ * - src/auth/AuthContext.jsx
+ * =====================================================
+ */
 export default function Login() {
-  const nav = useNavigate();
-  const { setSessionFromLogin, bootstrapClubContext } = useAuth();
+  const navigate = useNavigate();
+  const { setSessionFromLogin, setClubContext } = useAuth();
 
+  // -------------------------
+  // Form state
+  // -------------------------
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  // -------------------------
+  // UI state
+  // -------------------------
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  const onSubmit = async (e) => {
+  /**
+   * Intenta resolver clubContext desde /auth/me
+   * si el login no lo devolvió explícitamente.
+   */
+  async function resolveClubContextFallback() {
+    try {
+      const meData = await apiMe();
+
+      if (meData?.clubContext?.clubId) {
+        return meData.clubContext;
+      }
+
+      if (Array.isArray(meData?.memberships) && meData.memberships.length > 0) {
+        const firstMembership = meData.memberships[0];
+
+        if (firstMembership?.clubId && firstMembership?.role) {
+          return {
+            clubId: firstMembership.clubId,
+            role: firstMembership.role,
+          };
+        }
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function onSubmit(e) {
     e.preventDefault();
-    setErr("");
-    setLoading(true);
+
+    if (!email.trim() || !password.trim()) {
+      setErr("Debes completar email y password.");
+      return;
+    }
 
     try {
-      // 1) login
-      const data = await apiLogin(email, password);
+      setLoading(true);
+      setErr("");
+
+      /**
+       * Respuesta esperada del backend:
+       * {
+       *   token,
+       *   user,
+       *   clubContext? // opcional
+       * }
+       */
+      const data = await apiLogin(email.trim(), password);
 
       const token = data?.token || null;
       const user = data?.user || null;
+      let clubContext = data?.clubContext || null;
 
-      if (!token) throw new Error("No llegó token desde /auth/login.");
+      if (!token || !user) {
+        throw new Error("La respuesta de login no devolvió token o user.");
+      }
 
-      // 2) guardar sesión (clubContext puede venir o no)
+      /**
+       * Guardamos sesión base inmediatamente.
+       * Esto permite que /auth/me ya salga autenticado
+       * si necesitamos resolver clubContext después.
+       */
       setSessionFromLogin({
         token,
         user,
-        clubContext: data?.clubContext || null,
+        clubContext,
       });
 
-      // 3) si no vino clubContext, lo pedimos
-      if (!data?.clubContext?.clubId) {
-        await bootstrapClubContext(); // GET /auth/me
+      /**
+       * Si login no devolvió clubContext,
+       * intentamos resolverlo vía /auth/me
+       */
+      if (!clubContext?.clubId) {
+        clubContext = await resolveClubContextFallback();
+
+        if (clubContext?.clubId) {
+          setClubContext(clubContext);
+        }
       }
 
-      // 4) ir a Home (Home decide UI por rol/club)
-      nav("/home", { replace: true });
-    } catch (e2) {
-      setErr(e2?.response?.data?.message || e2?.message || "Error en login");
+      navigate("/home", { replace: true });
+    } catch (error) {
+      setErr(
+        error?.response?.data?.message ||
+          error.message ||
+          "No se pudo iniciar sesión."
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
-    <div className="min-h-screen bg-fifa-radial flex items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-2xl bg-[var(--fifa-card)] ring-1 ring-[var(--fifa-line)] shadow-[0_10px_30px_rgba(0,0,0,0.35)] overflow-hidden">
-        <div className="px-6 py-5 border-b border-[var(--fifa-line)]/70 bg-black/20">
-          <h1 className="text-2xl font-extrabold tracking-tight text-[var(--fifa-text)]">
-            Iniciar sesión
-          </h1>
-          <p className="mt-1 text-sm text-[var(--fifa-mute)]">
-            Entra a tu club y revisa tus estadísticas.
-          </p>
-        </div>
+    <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
+      <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4 py-10">
+        <div className="grid w-full overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-2xl lg:grid-cols-2">
+          {/* PANEL IZQUIERDO */}
+          <section className="hidden lg:flex flex-col justify-between bg-black/20 p-10">
+            <div>
+              <div className="inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1 text-xs font-semibold uppercase tracking-widest text-emerald-300">
+                FIFA Club Pro
+              </div>
 
-        <form onSubmit={onSubmit} className="p-6 space-y-4">
-          {err ? (
-            <div className="rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
-              {err}
+              <h1 className="mt-6 text-4xl font-black leading-tight">
+                Gestiona tu club,
+                <br />
+                tus partidos
+                <br />
+                y tus estadísticas.
+              </h1>
+
+              <p className="mt-5 max-w-md text-sm leading-6 text-slate-300">
+                Plataforma para clubes tipo Pro Clubs: miembros, roles,
+                solicitudes, partidos, player stats y paneles de rendimiento.
+              </p>
             </div>
-          ) : null}
 
-          <div>
-            <label className="block text-sm text-[var(--fifa-mute)]">Correo</label>
-            <input
-              type="email"
-              className="mt-1 w-full rounded-lg bg-black/25 ring-1 ring-[var(--fifa-line)] px-3 py-2 text-[var(--fifa-text)] outline-none focus:ring-[var(--fifa-cyan)]/40"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="correo@ejemplo.com"
-              autoComplete="email"
-              required
-            />
-          </div>
+            <div className="mt-10 grid gap-4">
+              <FeatureItem
+                title="Sesión persistente"
+                text="Tu contexto de usuario y club se conserva para mantener la navegación consistente."
+              />
+              <FeatureItem
+                title="Roles por club"
+                text="Admin, captain y member con permisos diferenciados en la operación diaria."
+              />
+              <FeatureItem
+                title="Gestión deportiva"
+                text="Partidos, estadísticas individuales y control del plantel desde una sola app."
+              />
+            </div>
+          </section>
 
-          <div>
-            <label className="block text-sm text-[var(--fifa-mute)]">Contraseña</label>
-            <input
-              type="password"
-              className="mt-1 w-full rounded-lg bg-black/25 ring-1 ring-[var(--fifa-line)] px-3 py-2 text-[var(--fifa-text)] outline-none focus:ring-[var(--fifa-neon)]/35"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              required
-            />
-          </div>
+          {/* PANEL DERECHO */}
+          <section className="p-6 sm:p-8 lg:p-10">
+            <div className="mx-auto w-full max-w-md">
+              <div className="mb-8">
+                <div className="text-sm font-medium uppercase tracking-wider text-emerald-300">
+                  Bienvenido de vuelta
+                </div>
+                <h2 className="mt-2 text-3xl font-bold">Iniciar sesión</h2>
+                <p className="mt-2 text-sm text-slate-400">
+                  Entra con tu cuenta para acceder al panel del club.
+                </p>
+              </div>
 
-          <button
-            disabled={loading}
-            className="w-full rounded-lg bg-white/5 px-3 py-2 font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-neon)]/30 hover:shadow-[0_0_22px_rgba(36,255,122,0.22)] transition disabled:opacity-60"
-          >
-            {loading ? "Entrando..." : "Entrar"}
-          </button>
+              {err ? (
+                <div className="mb-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+                  {err}
+                </div>
+              ) : null}
 
-          <div className="text-sm text-[var(--fifa-mute)]">
-            ¿No tienes cuenta?{" "}
-            <Link
-              to="/register"
-              className="text-[var(--fifa-cyan)] font-semibold hover:underline"
-            >
-              Registrar
-            </Link>
-          </div>
-        </form>
+              <form onSubmit={onSubmit} className="space-y-5">
+                <label className="block">
+                  <span className="mb-2 block text-sm text-slate-300">
+                    Email
+                  </span>
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="tu@email.com"
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none ring-0 transition focus:border-emerald-500/50"
+                    disabled={loading}
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm text-slate-300">
+                    Password
+                  </span>
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none ring-0 transition focus:border-emerald-500/50"
+                    disabled={loading}
+                  />
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-2xl bg-emerald-600 px-5 py-3 font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading ? "Ingresando..." : "Entrar"}
+                </button>
+              </form>
+
+              <div className="mt-6 text-sm text-slate-400">
+                ¿Aún no tienes cuenta?{" "}
+                <Link
+                  to="/register"
+                  className="font-medium text-emerald-300 hover:text-emerald-200"
+                >
+                  Crear cuenta
+                </Link>
+              </div>
+
+              <div className="mt-8 rounded-2xl border border-white/10 bg-black/20 p-4 text-xs leading-6 text-slate-400">
+                Nota: si el login no devuelve contexto de club, esta pantalla
+                intenta reconstruirlo automáticamente desde <code>/auth/me</code>
+                para evitar que el usuario entre sin <code>clubContext</code>.
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
+    </main>
+  );
+}
+
+/**
+ * =====================================================
+ * Subcomponentes visuales
+ * =====================================================
+ */
+function FeatureItem({ title, text }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="text-sm font-semibold text-slate-100">{title}</div>
+      <div className="mt-1 text-sm leading-6 text-slate-400">{text}</div>
     </div>
   );
 }

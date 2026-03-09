@@ -1,15 +1,12 @@
 // src/api/http.js
-import axios from "axios";
-
-const http = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
-});
-
-http.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  config.headers = config.headers || {}; // ✅ importante
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
-export default http;
+/**
+ * Archivo legado.
+ * -----------------------------------------------------
+ * Se mantiene temporalmente para evitar imports rotos
+ * mientras toda la app migra a ./client.
+ *
+ * Recomendación:
+ * - reemplazar imports de "./http" por "./client"
+ * - eliminar este archivo al finalizar la migración
+ */
+export { api as default } from "./client";

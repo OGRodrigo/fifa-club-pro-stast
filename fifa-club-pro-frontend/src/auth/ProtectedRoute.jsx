@@ -1,13 +1,21 @@
+// src/auth/ProtectedRoute.jsx
 import { Navigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
-import FifaLoader from "../components/FifaLoader";
 
+/**
+ * =====================================================
+ * PROTECTED ROUTE
+ * -----------------------------------------------------
+ * - Si AuthContext está booting, no redirige todavía
+ * - Si no hay sesión, manda a /login
+ * - Si hay sesión, renderiza children
+ * =====================================================
+ */
 export default function ProtectedRoute({ children }) {
-
   const { isLoggedIn, booting } = useAuth();
 
   if (booting) {
-    return <FifaLoader text="Verificando sesión..." />;
+    return null;
   }
 
   if (!isLoggedIn) {

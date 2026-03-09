@@ -1,160 +1,336 @@
 // src/pages/Register.jsx
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { register as apiRegister } from "../api/auth";
+import { register as apiRegister, me as apiMe } from "../api/auth";
+import { useAuth } from "../auth/AuthContext";
 
+/**
+ * =====================================================
+ * REGISTER PAGE
+ * -----------------------------------------------------
+ * Responsabilidades:
+ * - capturar datos del nuevo usuario
+ * - llamar POST /auth/register
+ * - guardar sesión si backend devuelve token + user
+ * - intentar reconstruir clubContext con /auth/me si aplica
+ * - redirigir a /home cuando el backend hace autologin
+ * - si el backend no hace autologin, redirigir a /login
+ *
+ * IMPORTANTE:
+ * El backend UserSchema acepta platform solo con enum:
+ * - "PS"
+ * - "XBOX"
+ * - "PC"
+ *
+ * Por eso este formulario debe enviar SOLO esos valores.
+ * =====================================================
+ */
 export default function Register() {
-  const nav = useNavigate();
+  const navigate = useNavigate();
+  const { setSessionFromLogin, setClubContext } = useAuth();
 
+  // -------------------------
+  // Form state
+  // -------------------------
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [gamerTag, setGamerTag] = useState("");
+  const [platform, setPlatform] = useState("PS");
+  const [country, setCountry] = useState("");
+
+  // -------------------------
+  // UI state
+  // -------------------------
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  const [username, setUsername] = useState("");
-  const [gamerTag, setGamerTag] = useState("");
-  const [platform, setPlatform] = useState("PS");
-  const [country, setCountry] = useState("Chile");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  async function resolveClubContextFallback() {
+    try {
+      const meData = await apiMe();
 
-  const onSubmit = async (e) => {
+      if (meData?.clubContext?.clubId) {
+        return meData.clubContext;
+      }
+
+      if (Array.isArray(meData?.memberships) && meData.memberships.length > 0) {
+        const firstMembership = meData.memberships[0];
+
+        if (firstMembership?.clubId && firstMembership?.role) {
+          return {
+            clubId: firstMembership.clubId,
+            role: firstMembership.role,
+          };
+        }
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  function validateForm() {
+    if (!username.trim()) return "Debes ingresar username.";
+    if (!email.trim()) return "Debes ingresar email.";
+    if (!password.trim()) return "Debes ingresar password.";
+    if (password.trim().length < 6) {
+      return "La password debe tener al menos 6 caracteres.";
+    }
+    if (!gamerTag.trim()) return "Debes ingresar gamerTag.";
+    if (!platform.trim()) return "Debes seleccionar plataforma.";
+    if (!country.trim()) return "Debes ingresar país.";
+    return "";
+  }
+
+  async function onSubmit(e) {
     e.preventDefault();
-    setErr("");
-    setLoading(true);
+
+    const validationError = validateForm();
+    if (validationError) {
+      setErr(validationError);
+      return;
+    }
 
     try {
-      if (!username || !email || !password || !gamerTag) {
-        setErr("Completa username, email, password y gamerTag.");
+      setLoading(true);
+      setErr("");
+
+      const payload = {
+        username: username.trim(),
+        email: email.trim(),
+        password: password.trim(),
+        gamerTag: gamerTag.trim(),
+        platform: platform.trim(), // "PS" | "XBOX" | "PC"
+        country: country.trim(),
+      };
+
+      const data = await apiRegister(payload);
+
+      const token = data?.token || null;
+      const user = data?.user || null;
+      let clubContext = data?.clubContext || null;
+
+      // Caso 1: backend hace autologin
+      if (token && user) {
+        setSessionFromLogin({
+          token,
+          user,
+          clubContext,
+        });
+
+        if (!clubContext?.clubId) {
+          clubContext = await resolveClubContextFallback();
+
+          if (clubContext?.clubId) {
+            setClubContext(clubContext);
+          }
+        }
+
+        navigate("/home", { replace: true });
         return;
       }
 
-      await apiRegister({
-        username,
-        gamerTag,
-        platform,
-        country,
-        email,
-        password,
-      });
-
-      nav("/login", { replace: true });
-    } catch (e2) {
-      setErr(e2?.response?.data?.message || e2?.message || "Error en registro");
+      // Caso 2: backend registra pero no inicia sesión
+      navigate("/login", { replace: true });
+    } catch (error) {
+      setErr(
+        error?.response?.data?.message ||
+          error.message ||
+          "No se pudo registrar la cuenta."
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
-    <div className="min-h-screen bg-fifa-radial flex items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-2xl bg-[var(--fifa-card)] ring-1 ring-[var(--fifa-line)] shadow-[0_10px_30px_rgba(0,0,0,0.35)] overflow-hidden">
-        <div className="px-6 py-5 border-b border-[var(--fifa-line)]/70 bg-black/20">
-          <h1 className="text-2xl font-extrabold tracking-tight text-[var(--fifa-text)]">
-            Registrar usuario
-          </h1>
-          <p className="mt-1 text-sm text-[var(--fifa-mute)]">
-            Crea tu cuenta para unirte a un club.
-          </p>
-        </div>
-
-        <form onSubmit={onSubmit} className="p-6 space-y-4">
-          {err ? (
-            <div className="rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
-              {err}
-            </div>
-          ) : null}
-
-          <div>
-            <label className="block text-sm text-[var(--fifa-mute)]">Username</label>
-            <input
-              className="mt-1 w-full rounded-lg bg-black/25 ring-1 ring-[var(--fifa-line)] px-3 py-2 text-[var(--fifa-text)] outline-none focus:ring-[var(--fifa-cyan)]/40"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="locojuan"
-              autoComplete="username"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-[var(--fifa-mute)]">Email</label>
-            <input
-              type="email"
-              className="mt-1 w-full rounded-lg bg-black/25 ring-1 ring-[var(--fifa-line)] px-3 py-2 text-[var(--fifa-text)] outline-none focus:ring-[var(--fifa-cyan)]/40"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="correo@ejemplo.com"
-              autoComplete="email"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-[var(--fifa-mute)]">Password</label>
-            <input
-              type="password"
-              className="mt-1 w-full rounded-lg bg-black/25 ring-1 ring-[var(--fifa-line)] px-3 py-2 text-[var(--fifa-text)] outline-none focus:ring-[var(--fifa-neon)]/35"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="new-password"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-[var(--fifa-mute)]">GamerTag</label>
-            <input
-              className="mt-1 w-full rounded-lg bg-black/25 ring-1 ring-[var(--fifa-line)] px-3 py-2 text-[var(--fifa-text)] outline-none focus:ring-[var(--fifa-cyan)]/40"
-              value={gamerTag}
-              onChange={(e) => setGamerTag(e.target.value)}
-              placeholder="JuanPro"
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
+    <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
+      <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4 py-10">
+        <div className="grid w-full overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-2xl lg:grid-cols-2">
+          {/* PANEL IZQUIERDO */}
+          <section className="hidden lg:flex flex-col justify-between bg-black/20 p-10">
             <div>
-              <label className="block text-sm text-[var(--fifa-mute)]">Plataforma</label>
-              <select
-                className="mt-1 w-full rounded-lg bg-black/25 ring-1 ring-[var(--fifa-line)] px-3 py-2 text-[var(--fifa-text)] outline-none focus:ring-[var(--fifa-neon)]/35"
-                value={platform}
-                onChange={(e) => setPlatform(e.target.value)}
-              >
-                <option value="PS">PS</option>
-                <option value="XBOX">XBOX</option>
-                <option value="PC">PC</option>
-              </select>
+              <div className="inline-flex rounded-full border border-sky-500/30 bg-sky-500/10 px-4 py-1 text-xs font-semibold uppercase tracking-widest text-sky-300">
+                FIFA Club Pro
+              </div>
+
+              <h1 className="mt-6 text-4xl font-black leading-tight">
+                Crea tu cuenta
+                <br />
+                y entra al ecosistema
+                <br />
+                de tu club.
+              </h1>
+
+              <p className="mt-5 max-w-md text-sm leading-6 text-slate-300">
+                Registro inicial de usuario para acceder a clubes, gestionar
+                partidos, revisar estadísticas y operar dentro del sistema.
+              </p>
             </div>
 
-            <div>
-              <label className="block text-sm text-[var(--fifa-mute)]">País</label>
-              <input
-                className="mt-1 w-full rounded-lg bg-black/25 ring-1 ring-[var(--fifa-line)] px-3 py-2 text-[var(--fifa-text)] outline-none focus:ring-[var(--fifa-cyan)]/40"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                placeholder="Chile"
+            <div className="mt-10 grid gap-4">
+              <FeatureItem
+                title="Perfil base del jugador"
+                text="Username, gamerTag, plataforma y país quedan listos desde el alta."
+              />
+              <FeatureItem
+                title="Sesión consistente"
+                text="Si el backend devuelve token al registrar, la app entra directo con sesión persistente."
+              />
+              <FeatureItem
+                title="Escalable para clubes"
+                text="Luego podrás crear club, unirte a uno existente o operar según tu rol."
               />
             </div>
-          </div>
+          </section>
 
-          <button
-            disabled={loading}
-            className="w-full rounded-lg bg-white/5 px-3 py-2 font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-neon)]/30 hover:shadow-[0_0_22px_rgba(36,255,122,0.22)] transition disabled:opacity-60"
-          >
-            {loading ? "Creando..." : "Crear cuenta"}
-          </button>
+          {/* PANEL DERECHO */}
+          <section className="p-6 sm:p-8 lg:p-10">
+            <div className="mx-auto w-full max-w-md">
+              <div className="mb-8">
+                <div className="text-sm font-medium uppercase tracking-wider text-sky-300">
+                  Nuevo usuario
+                </div>
+                <h2 className="mt-2 text-3xl font-bold">Crear cuenta</h2>
+                <p className="mt-2 text-sm text-slate-400">
+                  Completa tus datos para registrarte en FIFA Club Pro.
+                </p>
+              </div>
 
-          <div className="text-sm text-[var(--fifa-mute)]">
-            ¿Ya tienes cuenta?{" "}
-            <Link
-              to="/login"
-              className="text-[var(--fifa-cyan)] font-semibold hover:underline"
-            >
-              Iniciar sesión
-            </Link>
-          </div>
-        </form>
+              {err ? (
+                <div className="mb-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+                  {err}
+                </div>
+              ) : null}
+
+              <form onSubmit={onSubmit} className="space-y-5">
+                <label className="block">
+                  <span className="mb-2 block text-sm text-slate-300">
+                    Username
+                  </span>
+                  <input
+                    type="text"
+                    autoComplete="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="rodrigo"
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none transition focus:border-sky-500/50"
+                    disabled={loading}
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm text-slate-300">
+                    Email
+                  </span>
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="tu@email.com"
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none transition focus:border-sky-500/50"
+                    disabled={loading}
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm text-slate-300">
+                    Password
+                  </span>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none transition focus:border-sky-500/50"
+                    disabled={loading}
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm text-slate-300">
+                    GamerTag
+                  </span>
+                  <input
+                    type="text"
+                    value={gamerTag}
+                    onChange={(e) => setGamerTag(e.target.value)}
+                    placeholder="Tu ID dentro del juego"
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none transition focus:border-sky-500/50"
+                    disabled={loading}
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm text-slate-300">
+                    Plataforma
+                  </span>
+                  <select
+                    value={platform}
+                    onChange={(e) => setPlatform(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none transition focus:border-sky-500/50"
+                    disabled={loading}
+                  >
+                    <option value="PS">PlayStation</option>
+                    <option value="XBOX">Xbox</option>
+                    <option value="PC">PC</option>
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm text-slate-300">
+                    País
+                  </span>
+                  <input
+                    type="text"
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                    placeholder="Chile"
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none transition focus:border-sky-500/50"
+                    disabled={loading}
+                  />
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-2xl bg-sky-600 px-5 py-3 font-semibold text-white transition hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading ? "Creando cuenta..." : "Registrarme"}
+                </button>
+              </form>
+
+              <div className="mt-6 text-sm text-slate-400">
+                ¿Ya tienes cuenta?{" "}
+                <Link
+                  to="/login"
+                  className="font-medium text-sky-300 hover:text-sky-200"
+                >
+                  Iniciar sesión
+                </Link>
+              </div>
+
+              <div className="mt-8 rounded-2xl border border-white/10 bg-black/20 p-4 text-xs leading-6 text-slate-400">
+                Nota: este flujo soporta ambos escenarios: backend con
+                autologin inmediato o backend que solo registra y luego manda a
+                login.
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
+    </main>
+  );
+}
+
+function FeatureItem({ title, text }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="text-sm font-semibold text-slate-100">{title}</div>
+      <div className="mt-1 text-sm leading-6 text-slate-400">{text}</div>
     </div>
   );
 }

@@ -1,4 +1,3 @@
-// src/controllers/auth.controller.js
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
@@ -18,6 +17,22 @@ async function buildClubContext(userId) {
 }
 
 /**
+ * Normaliza plataforma al enum oficial del modelo User:
+ * - "PS"
+ * - "XBOX"
+ * - "PC"
+ */
+function normalizePlatform(value) {
+  const raw = String(value || "").trim().toUpperCase();
+
+  if (["PS", "PS4", "PS5", "PLAYSTATION"].includes(raw)) return "PS";
+  if (["XBOX", "XBOX ONE", "XBOX SERIES", "XBOX SERIES X", "XBOX SERIES S"].includes(raw)) return "XBOX";
+  if (["PC"].includes(raw)) return "PC";
+
+  return raw;
+}
+
+/**
  * =========================
  * POST /auth/register
  * =========================
@@ -32,10 +47,6 @@ const register = async (req, res) => {
       });
     }
 
-    if (!process.env.JWT_SECRET) {
-      return res.status(500).json({ message: "JWT_SECRET no configurado" });
-    }
-
     const emailNorm = String(email).trim().toLowerCase();
 
     const exists = await User.findOne({ email: emailNorm }).select("_id");
@@ -43,18 +54,25 @@ const register = async (req, res) => {
       return res.status(409).json({ message: "Email ya registrado" });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(String(password), 10);
+    const platformNorm = normalizePlatform(platform || "PS");
+
+    const allowedPlatforms = ["PS", "XBOX", "PC"];
+    if (!allowedPlatforms.includes(platformNorm)) {
+      return res.status(400).json({
+        message: "Plataforma inválida. Valores permitidos: PS, XBOX, PC",
+      });
+    }
 
     const user = await User.create({
       username: String(username).trim(),
       email: emailNorm,
       passwordHash,
       gamerTag: String(gamerTag).trim(),
-      platform: platform ? String(platform).trim() : undefined,
+      platform: platformNorm,
       country: country ? String(country).trim() : undefined,
     });
 
-    // (Opcional) puedes devolver token en register; por ahora simple: usuario creado
     return res.status(201).json({
       message: "Usuario creado",
       user: {
@@ -68,7 +86,9 @@ const register = async (req, res) => {
     });
   } catch (err) {
     console.error("register ERROR:", err);
-    return res.status(500).json({ message: "Error en register" });
+    return res.status(500).json({
+      message: err.message || "Error en register",
+    });
   }
 };
 
@@ -91,7 +111,6 @@ const login = async (req, res) => {
 
     const emailNorm = String(email).trim().toLowerCase();
 
-    // ⚠️ passwordHash suele estar select:false
     const user = await User.findOne({ email: emailNorm }).select("+passwordHash");
     if (!user) {
       return res.status(401).json({ message: "Credenciales inválidas" });
@@ -103,12 +122,11 @@ const login = async (req, res) => {
     }
 
     const token = jwt.sign(
-      { sub: user._id }, // estándar
+      { sub: user._id },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // ✅ Importante: clubContext al login (para tu menú)
     const clubContext = await buildClubContext(user._id);
 
     return res.status(200).json({
@@ -121,31 +139,36 @@ const login = async (req, res) => {
         platform: user.platform,
         country: user.country,
       },
-      clubContext, // { clubId, role } o null
+      clubContext,
     });
   } catch (err) {
     console.error("login ERROR:", err);
-    return res.status(500).json({ message: "Error en login" });
+    return res.status(500).json({
+      message: err.message || "Error en login",
+    });
   }
 };
 
 /**
  * =========================
  * GET /auth/me (PROTEGIDO)
- * Devuelve clubContext => { clubId, role } o null
  * =========================
  */
 const me = async (req, res) => {
   try {
     const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ message: "No autenticado" });
+    if (!userId) {
+      return res.status(401).json({ message: "No autenticado" });
+    }
 
     const clubContext = await buildClubContext(userId);
 
     return res.status(200).json({ clubContext });
   } catch (err) {
     console.error("me ERROR:", err);
-    return res.status(500).json({ message: "Error en /auth/me" });
+    return res.status(500).json({
+      message: err.message || "Error en /auth/me",
+    });
   }
 };
 

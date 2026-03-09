@@ -1,14 +1,22 @@
+// src/pages/Matches.jsx
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
-const emptyPS = (clubId = "") => ({
+/**
+ * Crea una fila vacía de playerStats.
+ * El club se completa con el lado seleccionado de MI club.
+ */
+const createEmptyPlayerStat = (clubId = "") => ({
   user: "",
   club: clubId,
   goals: 0,
   assists: 0,
 });
 
+/**
+ * Estado inicial de edición de partido.
+ */
 const initialEditMatchState = {
   open: false,
   saving: false,
@@ -21,44 +29,69 @@ const initialEditMatchState = {
   scoreAway: 0,
 };
 
+/**
+ * Estado inicial de edición de estadísticas.
+ */
 const initialEditStatsState = {
   open: false,
   saving: false,
   matchId: "",
-  homeClub: "",
-  awayClub: "",
-  scoreHome: 0,
-  scoreAway: 0,
   myClubSideId: "",
   playerStats: [],
-  rivalPlayerStats: [],
 };
+
+function formatDateInput(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 16);
+}
+
+function formatDateView(value) {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString();
+}
+
+function normalizeClubLabel(club) {
+  if (!club) return "Club";
+  return `${club.name || "Club"}${club.country ? ` · ${club.country}` : ""}`;
+}
+
+function normalizeMemberLabel(member) {
+  if (!member) return "Jugador";
+  return `${member.gamerTag || member.username || "Jugador"}${
+    member.platform ? ` · ${member.platform}` : ""
+  }`;
+}
 
 export default function Matches() {
   const { clubContext } = useAuth();
+
   const myClubId = clubContext?.clubId || "";
+  const myRole = clubContext?.role || "";
+  const isAdmin = myRole === "admin";
+  const isAdminOrCaptain = myRole === "admin" || myRole === "captain";
 
   // =========================
-  // Datos base
+  // Base data
   // =========================
   const [clubs, setClubs] = useState([]);
   const [myMembers, setMyMembers] = useState([]);
 
+  const [loadingBase, setLoadingBase] = useState(true);
+  const [baseErr, setBaseErr] = useState("");
+
   // =========================
-  // Mis partidos
+  // Matches list
   // =========================
   const [matches, setMatches] = useState([]);
   const [matchesLoading, setMatchesLoading] = useState(false);
   const [matchesErr, setMatchesErr] = useState("");
 
   // =========================
-  // Carga base
-  // =========================
-  const [loadingBase, setLoadingBase] = useState(true);
-  const [baseErr, setBaseErr] = useState("");
-
-  // =========================
-  // Form partido
+  // Create form
   // =========================
   const [homeClub, setHomeClub] = useState("");
   const [awayClub, setAwayClub] = useState("");
@@ -66,31 +99,92 @@ export default function Matches() {
   const [stadium, setStadium] = useState("");
   const [scoreHome, setScoreHome] = useState(0);
   const [scoreAway, setScoreAway] = useState(0);
+  const [playerStats, setPlayerStats] = useState([createEmptyPlayerStat("")]);
 
-  const [playerStats, setPlayerStats] = useState([emptyPS()]);
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState("");
   const [formOk, setFormOk] = useState("");
 
   // =========================
-  // Editar partido
+  // Edit match
   // =========================
   const [editMatch, setEditMatch] = useState(initialEditMatchState);
   const [editMatchErr, setEditMatchErr] = useState("");
   const [editMatchOk, setEditMatchOk] = useState("");
 
   // =========================
-  // Editar playerStats
+  // Edit stats
   // =========================
   const [editStats, setEditStats] = useState(initialEditStatsState);
   const [editStatsErr, setEditStatsErr] = useState("");
   const [editStatsOk, setEditStatsOk] = useState("");
 
   // =========================
-  // Cargar clubs + roster real de MI club
+  // Derived maps
+  // =========================
+  const clubOptions = useMemo(() => {
+    return clubs.map((club) => ({
+      id: club._id,
+      name: club.name || "",
+      country: club.country || "",
+      label: normalizeClubLabel(club),
+    }));
+  }, [clubs]);
+
+  const clubMap = useMemo(() => {
+    return clubOptions.reduce((acc, club) => {
+      acc[club.id] = club;
+      return acc;
+    }, {});
+  }, [clubOptions]);
+
+  const memberOptions = useMemo(() => {
+    return myMembers.map((member) => ({
+      id: member.id,
+      username: member.username || "",
+      gamerTag: member.gamerTag || "",
+      platform: member.platform || "",
+      label: normalizeMemberLabel(member),
+    }));
+  }, [myMembers]);
+
+  const memberMap = useMemo(() => {
+    return memberOptions.reduce((acc, member) => {
+      acc[member.id] = member;
+      return acc;
+    }, {});
+  }, [memberOptions]);
+
+  const myClubIsHome = Boolean(homeClub && myClubId && homeClub === myClubId);
+  const myClubIsAway = Boolean(awayClub && myClubId && awayClub === myClubId);
+
+  const myClubSelectedSideId = myClubIsHome
+    ? homeClub
+    : myClubIsAway
+    ? awayClub
+    : "";
+
+  const matchIncludesMyClub =
+    Boolean(myClubId) && (homeClub === myClubId || awayClub === myClubId);
+
+  const canSubmit =
+    isAdminOrCaptain &&
+    Boolean(homeClub) &&
+    Boolean(awayClub) &&
+    homeClub !== awayClub &&
+    Boolean(date) &&
+    Boolean(stadium.trim()) &&
+    Number(scoreHome) >= 0 &&
+    Number(scoreAway) >= 0 &&
+    matchIncludesMyClub &&
+    !saving &&
+    !loadingBase;
+
+  // =========================
+  // Base load
   // =========================
   useEffect(() => {
-    let alive = true;
+    let active = true;
 
     async function loadBase() {
       try {
@@ -105,7 +199,7 @@ export default function Matches() {
 
         const responses = await Promise.all(requests);
 
-        if (!alive) return;
+        if (!active) return;
 
         const clubsRes = responses[0];
         const membersRes = responses[1];
@@ -117,7 +211,7 @@ export default function Matches() {
             ? membersRes.data.members
             : [];
 
-          const mappedMembers = members
+          const normalizedMembers = members
             .map((m) => {
               const u = m?.user;
               if (!u?._id) return null;
@@ -127,34 +221,33 @@ export default function Matches() {
                 username: u.username || "",
                 gamerTag: u.gamerTag || "",
                 platform: u.platform || "",
-                label: `${u.gamerTag || u.username}${u.platform ? ` · ${u.platform}` : ""}`,
               };
             })
             .filter(Boolean);
 
-          setMyMembers(mappedMembers);
+          setMyMembers(normalizedMembers);
         } else {
           setMyMembers([]);
         }
-      } catch (e) {
-        if (!alive) return;
-        setBaseErr(e?.response?.data?.message || e.message);
+      } catch (error) {
+        if (!active) return;
+        setBaseErr(error?.response?.data?.message || error.message || "Error cargando datos base");
       } finally {
-        if (alive) setLoadingBase(false);
+        if (active) setLoadingBase(false);
       }
     }
 
     loadBase();
 
     return () => {
-      alive = false;
+      active = false;
     };
   }, [myClubId]);
 
   // =========================
-  // Cargar partidos de mi club
+  // Matches load
   // =========================
-  const loadMyMatches = async () => {
+  async function loadMyMatches() {
     if (!myClubId) {
       setMatches([]);
       return;
@@ -173,79 +266,20 @@ export default function Matches() {
       });
 
       setMatches(Array.isArray(res.data?.data) ? res.data.data : []);
-    } catch (e) {
-      setMatchesErr(e?.response?.data?.message || e.message);
+    } catch (error) {
+      setMatchesErr(error?.response?.data?.message || error.message || "No se pudieron cargar los partidos");
       setMatches([]);
     } finally {
       setMatchesLoading(false);
     }
-  };
+  }
 
   useEffect(() => {
     loadMyMatches();
   }, [myClubId]);
 
-  const clubOptions = useMemo(() => {
-    return clubs.map((c) => ({
-      id: c._id,
-      label: `${c.name}${c.country ? ` · ${c.country}` : ""}`,
-      name: c.name,
-    }));
-  }, [clubs]);
-
-  const clubMap = useMemo(() => {
-    return clubOptions.reduce((acc, club) => {
-      acc[club.id] = club;
-      return acc;
-    }, {});
-  }, [clubOptions]);
-
-  const memberMap = useMemo(() => {
-    return myMembers.reduce((acc, member) => {
-      acc[member.id] = member;
-      return acc;
-    }, {});
-  }, [myMembers]);
-
-  const selectedHome = clubOptions.find((c) => c.id === homeClub);
-  const selectedAway = clubOptions.find((c) => c.id === awayClub);
-  const myClub = clubOptions.find((c) => c.id === myClubId);
-
-  const myClubIsHome = homeClub && myClubId && homeClub === myClubId;
-  const myClubIsAway = awayClub && myClubId && awayClub === myClubId;
-  const myClubSelectedSideId = myClubIsHome ? homeClub : myClubIsAway ? awayClub : "";
-
-  const matchIncludesMyClub =
-    Boolean(myClubId) && (homeClub === myClubId || awayClub === myClubId);
-
-  const canSubmit =
-    homeClub &&
-    awayClub &&
-    homeClub !== awayClub &&
-    date &&
-    stadium &&
-    Number(scoreHome) >= 0 &&
-    Number(scoreAway) >= 0 &&
-    matchIncludesMyClub &&
-    !saving &&
-    !loadingBase;
-
   // =========================
-  // Cuando cambia lado de mi club, ajustar club en playerStats
-  // =========================
-  useEffect(() => {
-    if (!myClubSelectedSideId) return;
-
-    setPlayerStats((prev) =>
-      prev.map((ps) => ({
-        ...ps,
-        club: myClubSelectedSideId,
-      }))
-    );
-  }, [myClubSelectedSideId]);
-
-  // =========================
-  // Preselección: si tengo club, lo pongo de home al inicio
+  // Form sync with my club
   // =========================
   useEffect(() => {
     if (!myClubId) return;
@@ -253,1299 +287,931 @@ export default function Matches() {
     setHomeClub((prev) => prev || myClubId);
     setPlayerStats((prev) =>
       prev.length > 0
-        ? prev.map((ps) => ({ ...ps, club: myClubId }))
-        : [emptyPS(myClubId)]
+        ? prev.map((row) => ({ ...row, club: myClubId }))
+        : [createEmptyPlayerStat(myClubId)]
     );
   }, [myClubId]);
 
-  // =========================
-  // Helpers playerStats create
-  // =========================
-  const addPS = () =>
-    setPlayerStats((prev) => [...prev, emptyPS(myClubSelectedSideId || "")]);
+  useEffect(() => {
+    if (!myClubSelectedSideId) return;
 
-  const removePS = (idx) =>
-    setPlayerStats((prev) => prev.filter((_, i) => i !== idx));
-
-  const updatePS = (idx, patch) =>
     setPlayerStats((prev) =>
-      prev.map((row, i) => (i === idx ? { ...row, ...patch } : row))
+      prev.map((row) => ({
+        ...row,
+        club: myClubSelectedSideId,
+      }))
     );
+  }, [myClubSelectedSideId]);
 
-  const clearForm = () => {
+  // =========================
+  // Create helpers
+  // =========================
+  function addPlayerStatRow() {
+    setPlayerStats((prev) => [
+      ...prev,
+      createEmptyPlayerStat(myClubSelectedSideId || myClubId || ""),
+    ]);
+  }
+
+  function removePlayerStatRow(index) {
+    setPlayerStats((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updatePlayerStatRow(index, patch) {
+    setPlayerStats((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, ...patch } : row))
+    );
+  }
+
+  function clearCreateForm() {
     setHomeClub(myClubId || "");
     setAwayClub("");
     setDate("");
     setStadium("");
     setScoreHome(0);
     setScoreAway(0);
-    setPlayerStats([emptyPS(myClubId || "")]);
+    setPlayerStats([createEmptyPlayerStat(myClubId || "")]);
     setFormErr("");
     setFormOk("");
-  };
+  }
 
-  // =========================
-  // Validación create
-  // =========================
-  const validate = () => {
-    if (!myClubId) {
-      return "No tienes club activo. No se puede registrar playerStats reales sin club.";
-    }
-
-    if (!homeClub || !awayClub || !date || !stadium) {
-      return "Faltan campos: homeClub, awayClub, date o stadium.";
-    }
-
-    if (homeClub === awayClub) {
-      return "homeClub y awayClub no pueden ser el mismo.";
-    }
-
-    if (!matchIncludesMyClub) {
-      return "Debes crear un partido donde participe tu club.";
-    }
-
+  function validateCreateForm() {
+    if (!myClubId) return "No tienes club activo.";
+    if (!isAdminOrCaptain) return "Solo admin o captain pueden crear partidos.";
+    if (!homeClub || !awayClub) return "Debes seleccionar club local y visitante.";
+    if (homeClub === awayClub) return "Local y visitante no pueden ser el mismo club.";
+    if (!date) return "Debes indicar fecha y hora.";
+    if (!stadium.trim()) return "Debes indicar estadio.";
+    if (!matchIncludesMyClub) return "Tu club debe participar en el partido.";
     if (Number(scoreHome) < 0 || Number(scoreAway) < 0) {
-      return "Marcador inválido.";
+      return "Los goles no pueden ser negativos.";
     }
 
-    const cleaned = playerStats
-      .map((ps) => ({
-        user: ps.user,
-        club: ps.club,
-        goals: Number(ps.goals || 0),
-        assists: Number(ps.assists || 0),
-      }))
-      .filter((ps) => ps.user && ps.club);
+    for (let i = 0; i < playerStats.length; i += 1) {
+      const row = playerStats[i];
 
-    const seen = new Set();
-
-    for (const ps of cleaned) {
-      const key = `${ps.user}-${ps.club}`;
-
-      if (seen.has(key)) {
-        return "Hay playerStats duplicados para el mismo user+club.";
-      }
-      seen.add(key);
-
-      if (ps.club !== homeClub && ps.club !== awayClub) {
-        return "playerStats.club debe ser homeClub o awayClub.";
+      if (!row.user) {
+        return `Falta seleccionar jugador en la fila ${i + 1}.`;
       }
 
-      if (ps.club !== myClubSelectedSideId) {
-        return "Solo puedes registrar playerStats para tu club con la configuración actual.";
-      }
-
-      if (ps.goals < 0 || ps.assists < 0) {
-        return "Goals/assists no pueden ser negativos.";
-      }
-
-      const maxGoals = ps.club === homeClub ? Number(scoreHome) : Number(scoreAway);
-
-      if (ps.goals > maxGoals) {
-        return "Goles del jugador exceden goles del club.";
-      }
-
-      if (ps.goals + ps.assists > maxGoals) {
-        return "Goles + asistencias exceden goles del club.";
+      if (row.goals < 0 || row.assists < 0) {
+        return `Goals/assists no pueden ser negativos en la fila ${i + 1}.`;
       }
     }
 
-    return null;
-  };
-
-  const onCreate = async (e) => {
-  e.preventDefault();
-  setFormErr("");
-  setFormOk("");
-
-  const msg = validate();
-  if (msg) {
-    setFormErr(msg);
-    return;
+    return "";
   }
 
-  if (!myClubId) {
-    setFormErr("No tienes club activo en sesión.");
-    return;
+  async function handleCreateMatch(e) {
+    e.preventDefault();
+
+    const validationError = validateCreateForm();
+    if (validationError) {
+      setFormErr(validationError);
+      setFormOk("");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setFormErr("");
+      setFormOk("");
+
+      const payload = {
+        homeClub,
+        awayClub,
+        date,
+        stadium: stadium.trim(),
+        scoreHome: Number(scoreHome),
+        scoreAway: Number(scoreAway),
+        playerStats: playerStats.map((row) => ({
+          user: row.user,
+          club: myClubSelectedSideId || myClubId,
+          goals: Number(row.goals || 0),
+          assists: Number(row.assists || 0),
+        })),
+      };
+
+      await api.post(`/matches/clubs/${myClubId}`, payload);
+
+      setFormOk("Partido creado correctamente.");
+      clearCreateForm();
+      await loadMyMatches();
+    } catch (error) {
+      setFormErr(error?.response?.data?.message || error.message || "No se pudo crear el partido.");
+      setFormOk("");
+    } finally {
+      setSaving(false);
+    }
   }
-
-  const payloadPlayerStats = playerStats
-    .map((ps) => ({
-      user: ps.user,
-      club: myClubSelectedSideId,
-      goals: Number(ps.goals || 0),
-      assists: Number(ps.assists || 0),
-    }))
-    .filter((ps) => ps.user && ps.club);
-
-  try {
-    setSaving(true);
-
-    await api.post(`/matches/clubs/${myClubId}`, {
-      homeClub,
-      awayClub,
-      date,
-      stadium,
-      scoreHome: Number(scoreHome),
-      scoreAway: Number(scoreAway),
-      playerStats: payloadPlayerStats,
-    });
-
-    setFormOk("✅ Partido creado con playerStats de tu club.");
-    setDate("");
-    setStadium("");
-    setScoreHome(0);
-    setScoreAway(0);
-    setPlayerStats([emptyPS(myClubSelectedSideId || myClubId || "")]);
-
-    await loadMyMatches();
-  } catch (e2) {
-    setFormErr(e2?.response?.data?.message || e2.message);
-  } finally {
-    setSaving(false);
-  }
-};
 
   // =========================
-  // Helpers editar partido
+  // Edit match
   // =========================
-  const openEditMatch = (match) => {
+  function openEditMatch(match) {
     setEditMatchErr("");
     setEditMatchOk("");
+
     setEditMatch({
       open: true,
       saving: false,
-      matchId: match._id,
+      matchId: match?._id || "",
       homeClub: match?.homeClub?._id || match?.homeClub || "",
       awayClub: match?.awayClub?._id || match?.awayClub || "",
-      date: match?.date ? new Date(match.date).toISOString().slice(0, 10) : "",
+      date: formatDateInput(match?.date),
       stadium: match?.stadium || "",
-      scoreHome: Number(match?.scoreHome ?? 0),
-      scoreAway: Number(match?.scoreAway ?? 0),
+      scoreHome: Number(match?.scoreHome || 0),
+      scoreAway: Number(match?.scoreAway || 0),
     });
-  };
+  }
 
-  const closeEditMatch = () => {
+  function closeEditMatch() {
     setEditMatch(initialEditMatchState);
     setEditMatchErr("");
     setEditMatchOk("");
-  };
-
-  const saveEditMatch = async (e) => {
-  e.preventDefault();
-  setEditMatchErr("");
-  setEditMatchOk("");
-
-  if (
-    !editMatch.homeClub ||
-    !editMatch.awayClub ||
-    !editMatch.date ||
-    !editMatch.stadium
-  ) {
-    setEditMatchErr("Todos los campos del partido son obligatorios.");
-    return;
   }
 
-  if (editMatch.homeClub === editMatch.awayClub) {
-    setEditMatchErr("homeClub y awayClub no pueden ser el mismo.");
-    return;
-  }
+  async function handleSaveEditMatch(e) {
+    e.preventDefault();
 
-  if (!myClubId) {
-    setEditMatchErr("No tienes club activo en sesión.");
-    return;
-  }
-
-  try {
-    setEditMatch((prev) => ({ ...prev, saving: true }));
-
-    await api.put(`/matches/${editMatch.matchId}/clubs/${myClubId}`, {
-      homeClub: editMatch.homeClub,
-      awayClub: editMatch.awayClub,
-      date: editMatch.date,
-      stadium: editMatch.stadium,
-      scoreHome: Number(editMatch.scoreHome),
-      scoreAway: Number(editMatch.scoreAway),
-    });
-
-    setEditMatchOk("✅ Partido actualizado.");
-    await loadMyMatches();
-  } catch (e) {
-    setEditMatchErr(e?.response?.data?.message || e.message);
-  } finally {
-    setEditMatch((prev) => ({ ...prev, saving: false }));
-  }
-};
-
-  // =========================
-  // Helpers editar stats
-  // =========================
-  const openEditStats = async (match) => {
-    try {
-      setEditStatsErr("");
-      setEditStatsOk("");
-
-      const res = await api.get(`/matches/${match._id}/full`);
-      const fullMatch = res.data;
-
-      const homeId = fullMatch?.homeClub?._id || "";
-      const awayId = fullMatch?.awayClub?._id || "";
-
-      const mySideId =
-        String(homeId) === String(myClubId)
-          ? homeId
-          : String(awayId) === String(myClubId)
-          ? awayId
-          : "";
-
-      const rawStats = Array.isArray(fullMatch?.playerStats) ? fullMatch.playerStats : [];
-
-      const myStats = rawStats
-        .filter((ps) => {
-          const psClub = ps?.club?._id || ps?.club || "";
-          return String(psClub) === String(mySideId);
-        })
-        .map((ps) => ({
-          user: ps?.user?._id || ps?.user || "",
-          club: mySideId,
-          goals: Number(ps?.goals || 0),
-          assists: Number(ps?.assists || 0),
-        }));
-
-      const rivalStats = rawStats
-        .filter((ps) => {
-          const psClub = ps?.club?._id || ps?.club || "";
-          return String(psClub) !== String(mySideId);
-        })
-        .map((ps) => ({
-          user: ps?.user?._id || ps?.user || "",
-          club: ps?.club?._id || ps?.club || "",
-          goals: Number(ps?.goals || 0),
-          assists: Number(ps?.assists || 0),
-        }));
-
-      setEditStats({
-        open: true,
-        saving: false,
-        matchId: fullMatch._id,
-        homeClub: homeId,
-        awayClub: awayId,
-        scoreHome: Number(fullMatch?.scoreHome ?? 0),
-        scoreAway: Number(fullMatch?.scoreAway ?? 0),
-        myClubSideId: mySideId,
-        playerStats: myStats.length > 0 ? myStats : [emptyPS(mySideId)],
-        rivalPlayerStats: rivalStats,
-      });
-    } catch (e) {
-      setMatchesErr(e?.response?.data?.message || e.message);
+    if (!isAdminOrCaptain) {
+      setEditMatchErr("Solo admin o captain pueden editar partidos.");
+      return;
     }
-  };
 
-  const closeEditStats = () => {
+    if (!editMatch.matchId) {
+      setEditMatchErr("No se encontró el partido a editar.");
+      return;
+    }
+
+    if (!editMatch.homeClub || !editMatch.awayClub) {
+      setEditMatchErr("Debes seleccionar club local y visitante.");
+      return;
+    }
+
+    if (editMatch.homeClub === editMatch.awayClub) {
+      setEditMatchErr("Local y visitante no pueden ser el mismo club.");
+      return;
+    }
+
+    try {
+      setEditMatch((prev) => ({ ...prev, saving: true }));
+      setEditMatchErr("");
+      setEditMatchOk("");
+
+      const payload = {
+        homeClub: editMatch.homeClub,
+        awayClub: editMatch.awayClub,
+        date: editMatch.date,
+        stadium: editMatch.stadium.trim(),
+        scoreHome: Number(editMatch.scoreHome),
+        scoreAway: Number(editMatch.scoreAway),
+      };
+
+      await api.put(`/matches/${editMatch.matchId}/clubs/${myClubId}`, payload);
+
+      setEditMatchOk("Partido actualizado correctamente.");
+      await loadMyMatches();
+      closeEditMatch();
+    } catch (error) {
+      setEditMatchErr(error?.response?.data?.message || error.message || "No se pudo actualizar el partido.");
+    } finally {
+      setEditMatch((prev) => ({ ...prev, saving: false }));
+    }
+  }
+
+  // =========================
+  // Delete match
+  // =========================
+  async function handleDeleteMatch(matchId) {
+    if (!isAdmin) {
+      setMatchesErr("Solo admin puede eliminar partidos.");
+      return;
+    }
+
+    const confirmed = window.confirm("¿Seguro que quieres eliminar este partido?");
+    if (!confirmed) return;
+
+    try {
+      setMatchesErr("");
+      await api.delete(`/matches/${matchId}/clubs/${myClubId}`);
+      await loadMyMatches();
+    } catch (error) {
+      setMatchesErr(error?.response?.data?.message || error.message || "No se pudo eliminar el partido.");
+    }
+  }
+
+  // =========================
+  // Edit player stats
+  // =========================
+  function openEditStats(match) {
+    const rawPlayerStats = Array.isArray(match?.playerStats) ? match.playerStats : [];
+
+    const normalized = rawPlayerStats
+      .map((row) => {
+        const userId =
+          row?.user?._id ||
+          row?.user ||
+          "";
+
+        const clubId =
+          row?.club?._id ||
+          row?.club ||
+          "";
+
+        return {
+          user: userId,
+          club: clubId,
+          goals: Number(row?.goals || 0),
+          assists: Number(row?.assists || 0),
+        };
+      })
+      .filter((row) => row.user);
+
+    setEditStatsErr("");
+    setEditStatsOk("");
+
+    setEditStats({
+      open: true,
+      saving: false,
+      matchId: match?._id || "",
+      myClubSideId:
+        match?.homeClub?._id === myClubId || match?.homeClub === myClubId
+          ? (match?.homeClub?._id || match?.homeClub || "")
+          : (match?.awayClub?._id || match?.awayClub || ""),
+      playerStats: normalized.filter((row) => row.club === myClubId || row.club === (match?.homeClub?._id === myClubId ? match?.homeClub?._id : match?.awayClub?._id)),
+    });
+  }
+
+  function closeEditStats() {
     setEditStats(initialEditStatsState);
     setEditStatsErr("");
     setEditStatsOk("");
-  };
+  }
 
-  const addEditStatsRow = () => {
+  function addEditStatsRow() {
     setEditStats((prev) => ({
       ...prev,
-      playerStats: [...prev.playerStats, emptyPS(prev.myClubSideId)],
+      playerStats: [
+        ...prev.playerStats,
+        createEmptyPlayerStat(prev.myClubSideId || myClubId || ""),
+      ],
     }));
-  };
+  }
 
-  const removeEditStatsRow = (idx) => {
+  function removeEditStatsRow(index) {
     setEditStats((prev) => ({
       ...prev,
-      playerStats: prev.playerStats.filter((_, i) => i !== idx),
+      playerStats: prev.playerStats.filter((_, i) => i !== index),
     }));
-  };
+  }
 
-  const updateEditStatsRow = (idx, patch) => {
+  function updateEditStatsRow(index, patch) {
     setEditStats((prev) => ({
       ...prev,
       playerStats: prev.playerStats.map((row, i) =>
-        i === idx ? { ...row, ...patch } : row
+        i === index ? { ...row, ...patch } : row
       ),
     }));
-  };
-
-  const validateEditStats = () => {
-    if (!editStats.myClubSideId) {
-      return "Tu club no participa en este partido.";
-    }
-
-    const cleanedMyStats = editStats.playerStats
-      .map((ps) => ({
-        user: ps.user,
-        club: editStats.myClubSideId,
-        goals: Number(ps.goals || 0),
-        assists: Number(ps.assists || 0),
-      }))
-      .filter((ps) => ps.user);
-
-    const seen = new Set();
-
-    for (const ps of cleanedMyStats) {
-      const key = `${ps.user}-${ps.club}`;
-
-      if (seen.has(key)) {
-        return "Hay jugadores duplicados en playerStats.";
-      }
-      seen.add(key);
-
-      if (ps.goals < 0 || ps.assists < 0) {
-        return "Goals/assists no pueden ser negativos.";
-      }
-
-      const maxGoals =
-        ps.club === editStats.homeClub
-          ? Number(editStats.scoreHome)
-          : Number(editStats.scoreAway);
-
-      if (ps.goals > maxGoals) {
-        return "Goles del jugador exceden goles del club.";
-      }
-
-      if (ps.goals + ps.assists > maxGoals) {
-        return "Goles + asistencias exceden goles del club.";
-      }
-    }
-
-    const fullPayload = [
-      ...cleanedMyStats,
-      ...editStats.rivalPlayerStats.map((ps) => ({
-        user: ps.user,
-        club: ps.club,
-        goals: Number(ps.goals || 0),
-        assists: Number(ps.assists || 0),
-      })),
-    ];
-
-    const totalHomeGoals = fullPayload
-      .filter((ps) => String(ps.club) === String(editStats.homeClub))
-      .reduce((acc, ps) => acc + Number(ps.goals || 0), 0);
-
-    const totalAwayGoals = fullPayload
-      .filter((ps) => String(ps.club) === String(editStats.awayClub))
-      .reduce((acc, ps) => acc + Number(ps.goals || 0), 0);
-
-    if (totalHomeGoals !== Number(editStats.scoreHome)) {
-      return `HOME: la suma de goles (${totalHomeGoals}) no coincide con scoreHome (${editStats.scoreHome})`;
-    }
-
-    if (totalAwayGoals !== Number(editStats.scoreAway)) {
-      return `AWAY: la suma de goles (${totalAwayGoals}) no coincide con scoreAway (${editStats.scoreAway})`;
-    }
-
-    return null;
-  };
-
-  const saveEditStats = async (e) => {
-  e.preventDefault();
-  setEditStatsErr("");
-  setEditStatsOk("");
-
-  const msg = validateEditStats();
-  if (msg) {
-    setEditStatsErr(msg);
-    return;
   }
 
+  async function handleSavePlayerStats(e) {
+    e.preventDefault();
+
+    if (!editStats.matchId) {
+      setEditStatsErr("No se encontró el partido.");
+      return;
+    }
+
+    for (let i = 0; i < editStats.playerStats.length; i += 1) {
+      const row = editStats.playerStats[i];
+
+      if (!row.user) {
+        setEditStatsErr(`Falta seleccionar jugador en la fila ${i + 1}.`);
+        return;
+      }
+
+      if (Number(row.goals) < 0 || Number(row.assists) < 0) {
+        setEditStatsErr(`Goals/assists no pueden ser negativos en la fila ${i + 1}.`);
+        return;
+      }
+    }
+
+    try {
+      setEditStats((prev) => ({ ...prev, saving: true }));
+      setEditStatsErr("");
+      setEditStatsOk("");
+
+      const payload = {
+        playerStats: editStats.playerStats.map((row) => ({
+          user: row.user,
+          club: row.club || editStats.myClubSideId || myClubId,
+          goals: Number(row.goals || 0),
+          assists: Number(row.assists || 0),
+        })),
+      };
+
+      await api.patch(`/matches/${editStats.matchId}/player-stats`, payload);
+
+      setEditStatsOk("Player stats actualizados correctamente.");
+      await loadMyMatches();
+      closeEditStats();
+    } catch (error) {
+      setEditStatsErr(error?.response?.data?.message || error.message || "No se pudieron actualizar los player stats.");
+    } finally {
+      setEditStats((prev) => ({ ...prev, saving: false }));
+    }
+  }
+
+  // =========================
+  // Render guards
+  // =========================
   if (!myClubId) {
-    setEditStatsErr("No tienes club activo en sesión.");
-    return;
-  }
-
-  const myStatsPayload = editStats.playerStats
-    .map((ps) => ({
-      user: ps.user,
-      club: editStats.myClubSideId,
-      goals: Number(ps.goals || 0),
-      assists: Number(ps.assists || 0),
-    }))
-    .filter((ps) => ps.user);
-
-  const rivalStatsPayload = editStats.rivalPlayerStats.map((ps) => ({
-    user: ps.user,
-    club: ps.club,
-    goals: Number(ps.goals || 0),
-    assists: Number(ps.assists || 0),
-  }));
-
-  const fullPayload = [...myStatsPayload, ...rivalStatsPayload];
-
-  try {
-    setEditStats((prev) => ({ ...prev, saving: true }));
-
-    await api.patch(
-      `/matches/${editStats.matchId}/clubs/${myClubId}/player-stats`,
-      {
-        strictTotals: true,
-        playerStats: fullPayload,
-      }
+    return (
+      <section className="space-y-4">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+          <h1 className="text-2xl font-bold">Matches</h1>
+          <p className="mt-3 text-sm text-slate-300">
+            No tienes un club activo. Selecciona o ingresa a un club para gestionar partidos.
+          </p>
+        </div>
+      </section>
     );
-
-    setEditStatsOk("✅ playerStats actualizados.");
-    await loadMyMatches();
-  } catch (e) {
-    setEditStatsErr(e?.response?.data?.message || e.message);
-  } finally {
-    setEditStats((prev) => ({ ...prev, saving: false }));
   }
-};
-  // =========================
-  // Eliminar partido
-  // =========================
-  const handleDeleteMatch = async (matchId) => {
-  const confirmed = window.confirm("¿Seguro que quieres eliminar este partido?");
-  if (!confirmed) return;
-
-  if (!myClubId) {
-    setMatchesErr("No tienes club activo en sesión.");
-    return;
-  }
-
-  try {
-    await api.delete(`/matches/${matchId}/clubs/${myClubId}`);
-    await loadMyMatches();
-  } catch (e) {
-    setMatchesErr(e?.response?.data?.message || e.message);
-  }
-};
-  // =========================
-  // Resúmenes
-  // =========================
-  const totalGoalsAssigned = playerStats.reduce(
-    (acc, ps) => acc + Number(ps.goals || 0),
-    0
-  );
-
-  const totalAssistsAssigned = playerStats.reduce(
-    (acc, ps) => acc + Number(ps.assists || 0),
-    0
-  );
-
-  const totalMatchGoals = Number(scoreHome || 0) + Number(scoreAway || 0);
 
   return (
-    <div className="space-y-6">
-      {/* HEADER */}
-      <section className="rounded-2xl p-6 bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-[var(--fifa-text)]">
-              Partidos
-            </h1>
-            <p className="mt-1 text-[var(--fifa-mute)]">
-              Crea, edita y elimina partidos de tu club. También puedes gestionar playerStats.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 w-full lg:w-[340px]">
-            <MiniInfo label="Clubes" value={clubs.length} />
-            <MiniInfo label="Miembros" value={myMembers.length} />
-            <MiniInfo label="Partidos" value={matches.length} />
-          </div>
-        </div>
-
-        <div className="mt-4 text-sm text-[var(--fifa-mute)]">
-          Tu club activo:{" "}
-          <span className="text-[var(--fifa-text)] font-semibold">
-            {myClub?.name || "—"}
-          </span>
-        </div>
-
-        {loadingBase ? (
-          <div className="mt-4 text-sm text-[var(--fifa-mute)]">Cargando datos…</div>
-        ) : null}
+    <section className="space-y-6">
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+        <h1 className="text-2xl font-bold">Matches</h1>
+        <p className="mt-2 text-sm text-slate-300">
+          Crea partidos, edítalos y gestiona player stats de tu club.
+        </p>
 
         {baseErr ? (
-          <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
+          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
             {baseErr}
           </div>
         ) : null}
+      </div>
 
-        {!loadingBase && !baseErr && !myClubId ? (
-          <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
-            No tienes un club activo en sesión. No puedes registrar partidos con roster real.
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+        <h2 className="text-xl font-semibold">Crear partido</h2>
+
+        {!isAdminOrCaptain ? (
+          <div className="mt-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-200">
+            Solo admin o captain pueden crear partidos.
           </div>
         ) : null}
-      </section>
-
-      {/* RESUMEN RÁPIDO */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Mi club" value={myClub?.name || "—"} />
-        <StatCard
-          label="Rival"
-          value={
-            myClubIsHome
-              ? selectedAway?.name || "—"
-              : myClubIsAway
-              ? selectedHome?.name || "—"
-              : "—"
-          }
-        />
-        <StatCard label="Goles match" value={String(totalMatchGoals)} />
-        <StatCard label="Stats cargadas" value={String(playerStats.length)} />
-      </section>
-
-      {/* FORM */}
-      <section className="rounded-2xl p-6 bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-[0_10px_30px_rgba(0,0,0,0.35)]">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <div className="text-xs font-semibold tracking-widest text-[var(--fifa-cyan)]">
-              CREAR PARTIDO
-            </div>
-            <div className="mt-1 text-sm text-[var(--fifa-mute)]">
-              Tu club debe participar como local o visita.
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={clearForm}
-            className="rounded-xl px-4 py-2 bg-white/5 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)] font-semibold hover:shadow-neon transition"
-          >
-            Limpiar formulario
-          </button>
-        </div>
 
         {formErr ? (
-          <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
+          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
             {formErr}
           </div>
         ) : null}
 
         {formOk ? (
-          <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-neon)]/30 p-3 text-sm text-[var(--fifa-neon)]">
+          <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
             {formOk}
           </div>
         ) : null}
 
-        <form onSubmit={onCreate} className="mt-5 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="Home club">
+        <form onSubmit={handleCreateMatch} className="mt-4 space-y-5">
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-sm text-slate-300">Club local</span>
               <select
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
                 value={homeClub}
                 onChange={(e) => setHomeClub(e.target.value)}
-                className="w-full rounded-xl px-3 py-3 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
+                disabled={!isAdminOrCaptain || loadingBase}
               >
-                <option value="">Selecciona home</option>
-                {clubOptions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
+                <option value="">Selecciona club</option>
+                {clubOptions.map((club) => (
+                  <option key={club.id} value={club.id}>
+                    {club.label}
                   </option>
                 ))}
               </select>
-            </Field>
+            </label>
 
-            <Field label="Away club">
+            <label className="space-y-2">
+              <span className="text-sm text-slate-300">Club visitante</span>
               <select
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
                 value={awayClub}
                 onChange={(e) => setAwayClub(e.target.value)}
-                className="w-full rounded-xl px-3 py-3 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
+                disabled={!isAdminOrCaptain || loadingBase}
               >
-                <option value="">Selecciona away</option>
-                {clubOptions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
+                <option value="">Selecciona club</option>
+                {clubOptions.map((club) => (
+                  <option key={club.id} value={club.id}>
+                    {club.label}
                   </option>
                 ))}
               </select>
-            </Field>
-          </div>
+            </label>
 
-          {!matchIncludesMyClub && homeClub && awayClub ? (
-            <div className="rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
-              Debes elegir un partido donde participe tu club para usar el roster real.
-            </div>
-          ) : null}
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Field label="Fecha">
+            <label className="space-y-2">
+              <span className="text-sm text-slate-300">Fecha y hora</span>
               <input
-                type="date"
+                type="datetime-local"
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full rounded-xl px-3 py-3 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
+                disabled={!isAdminOrCaptain}
               />
-            </Field>
+            </label>
 
-            <Field label="Estadio">
+            <label className="space-y-2">
+              <span className="text-sm text-slate-300">Estadio</span>
               <input
+                type="text"
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
                 value={stadium}
                 onChange={(e) => setStadium(e.target.value)}
-                placeholder="Estadio Nacional"
-                className="w-full rounded-xl px-3 py-3 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
+                placeholder="Nombre del estadio"
+                disabled={!isAdminOrCaptain}
               />
-            </Field>
+            </label>
 
-            <Field label="Marcador">
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="number"
-                  min="0"
-                  value={scoreHome}
-                  onChange={(e) => setScoreHome(e.target.value)}
-                  className="w-full rounded-xl px-3 py-3 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
-                  placeholder="Home"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  value={scoreAway}
-                  onChange={(e) => setScoreAway(e.target.value)}
-                  className="w-full rounded-xl px-3 py-3 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
-                  placeholder="Away"
-                />
-              </div>
-            </Field>
+            <label className="space-y-2">
+              <span className="text-sm text-slate-300">Goles local</span>
+              <input
+                type="number"
+                min="0"
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+                value={scoreHome}
+                onChange={(e) => setScoreHome(e.target.value)}
+                disabled={!isAdminOrCaptain}
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm text-slate-300">Goles visitante</span>
+              <input
+                type="number"
+                min="0"
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+                value={scoreAway}
+                onChange={(e) => setScoreAway(e.target.value)}
+                disabled={!isAdminOrCaptain}
+              />
+            </label>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <InfoPanel
-              title="Goles asignados"
-              value={totalGoalsAssigned}
-              note={`Total partido: ${totalMatchGoals}`}
-              accent="var(--fifa-neon)"
-            />
-            <InfoPanel
-              title="Asistencias asignadas"
-              value={totalAssistsAssigned}
-              note="Solo para tu club"
-              accent="var(--fifa-cyan)"
-            />
-            <InfoPanel
-              title="Filas playerStats"
-              value={playerStats.length}
-              note="Roster real de tu club"
-              accent="var(--fifa-mute)"
-            />
-          </div>
-
-          <div className="rounded-2xl bg-black/25 ring-1 ring-[var(--fifa-line)] p-4">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="text-xs font-semibold tracking-widest text-[var(--fifa-neon)]">
-                  PLAYER STATS
-                </div>
-                <div className="text-sm text-[var(--fifa-mute)]">
-                  Solo se muestran miembros reales de tu club.
-                </div>
+                <h3 className="font-semibold">Player stats de tu club</h3>
+                <p className="text-sm text-slate-400">
+                  Solo se registran estadísticas para tu club activo.
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={addPS}
-                disabled={!matchIncludesMyClub}
-                className="rounded-xl px-4 py-2 bg-white/5 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)] font-semibold hover:shadow-neon transition disabled:opacity-50"
+                onClick={addPlayerStatRow}
+                disabled={!isAdminOrCaptain}
+                className="rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/10 disabled:opacity-50"
               >
-                + Agregar jugador
+                Agregar jugador
               </button>
             </div>
 
-            <div className="mt-4 space-y-3">
-              {playerStats.map((ps, idx) => (
+            <div className="mt-4 space-y-4">
+              {playerStats.map((row, index) => (
                 <div
-                  key={idx}
-                  className="rounded-xl bg-black/25 ring-1 ring-[var(--fifa-line)] p-3 grid grid-cols-1 lg:grid-cols-12 gap-3"
+                  key={`create-ps-${index}`}
+                  className="grid gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-4 md:grid-cols-4"
                 >
-                  <div className="lg:col-span-6">
-                    <div className="text-xs text-[var(--fifa-mute)] mb-1">Jugador</div>
+                  <label className="space-y-2 md:col-span-2">
+                    <span className="text-sm text-slate-300">Jugador</span>
                     <select
-                      value={ps.user}
-                      onChange={(e) => updatePS(idx, { user: e.target.value })}
-                      disabled={!matchIncludesMyClub}
-                      className="w-full rounded-xl px-3 py-2 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)] disabled:opacity-50"
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+                      value={row.user}
+                      onChange={(e) =>
+                        updatePlayerStatRow(index, { user: e.target.value })
+                      }
+                      disabled={!isAdminOrCaptain}
                     >
-                      <option value="">Selecciona jugador de tu club</option>
-                      {myMembers.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.label}
+                      <option value="">Selecciona jugador</option>
+                      {memberOptions.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.label}
                         </option>
                       ))}
                     </select>
-                  </div>
+                  </label>
 
-                  <div className="lg:col-span-2">
-                    <div className="text-xs text-[var(--fifa-mute)] mb-1">Club</div>
-                    <input
-                      value={
-                        myClubSelectedSideId === homeClub
-                          ? `Home: ${selectedHome?.name || "Home"}`
-                          : myClubSelectedSideId === awayClub
-                          ? `Away: ${selectedAway?.name || "Away"}`
-                          : "—"
-                      }
-                      readOnly
-                      className="w-full rounded-xl px-3 py-2 bg-black/20 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-mute)]"
-                    />
-                  </div>
-
-                  <div className="lg:col-span-2">
-                    <div className="text-xs text-[var(--fifa-mute)] mb-1">Goles</div>
+                  <label className="space-y-2">
+                    <span className="text-sm text-slate-300">Goals</span>
                     <input
                       type="number"
                       min="0"
-                      value={ps.goals}
-                      onChange={(e) => updatePS(idx, { goals: e.target.value })}
-                      disabled={!matchIncludesMyClub}
-                      className="w-full rounded-xl px-3 py-2 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)] disabled:opacity-50"
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+                      value={row.goals}
+                      onChange={(e) =>
+                        updatePlayerStatRow(index, { goals: e.target.value })
+                      }
+                      disabled={!isAdminOrCaptain}
                     />
-                  </div>
+                  </label>
 
-                  <div className="lg:col-span-2">
-                    <div className="text-xs text-[var(--fifa-mute)] mb-1">Asist</div>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        min="0"
-                        value={ps.assists}
-                        onChange={(e) => updatePS(idx, { assists: e.target.value })}
-                        disabled={!matchIncludesMyClub}
-                        className="w-full rounded-xl px-3 py-2 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)] disabled:opacity-50"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removePS(idx)}
-                        disabled={playerStats.length === 1}
-                        className="rounded-xl px-3 py-2 bg-black/20 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-mute)] hover:text-[var(--fifa-text)] disabled:opacity-40"
-                        title="Eliminar fila"
-                      >
-                        ✕
-                      </button>
-                    </div>
+                  <label className="space-y-2">
+                    <span className="text-sm text-slate-300">Assists</span>
+                    <input
+                      type="number"
+                      min="0"
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+                      value={row.assists}
+                      onChange={(e) =>
+                        updatePlayerStatRow(index, { assists: e.target.value })
+                      }
+                      disabled={!isAdminOrCaptain}
+                    />
+                  </label>
+
+                  <div className="md:col-span-4">
+                    <button
+                      type="button"
+                      onClick={() => removePlayerStatRow(index)}
+                      disabled={!isAdminOrCaptain || playerStats.length === 1}
+                      className="rounded-xl border border-red-500/30 px-4 py-2 text-sm text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+                    >
+                      Quitar fila
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
-
-            <div className="mt-3 text-xs text-[var(--fifa-mute)]">
-              Con tu backend actual, el roster real disponible es el de tu propio club.
-            </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="w-full rounded-2xl px-4 py-3 bg-fifa-blue text-white font-extrabold tracking-wide hover:opacity-90 disabled:opacity-60 shadow-neon transition"
-          >
-            {saving ? "Guardando..." : "Crear partido"}
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              className="rounded-xl bg-emerald-600 px-5 py-2.5 font-medium hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {saving ? "Guardando..." : "Crear partido"}
+            </button>
+
+            <button
+              type="button"
+              onClick={clearCreateForm}
+              disabled={saving}
+              className="rounded-xl border border-white/10 px-5 py-2.5 hover:bg-white/10 disabled:opacity-50"
+            >
+              Limpiar
+            </button>
+          </div>
         </form>
-      </section>
+      </div>
 
-      {/* MIS PARTIDOS */}
-      <section className="rounded-2xl p-6 bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-[0_10px_30px_rgba(0,0,0,0.35)]">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <div className="text-xs font-semibold tracking-widest text-[var(--fifa-cyan)]">
-              MIS PARTIDOS
-            </div>
-            <div className="mt-1 text-sm text-[var(--fifa-mute)]">
-              Gestión completa de partidos de tu club.
-            </div>
-          </div>
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold">Partidos de mi club</h2>
 
           <button
             type="button"
             onClick={loadMyMatches}
-            className="rounded-xl px-4 py-2 bg-white/5 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)] font-semibold hover:shadow-neon transition"
+            disabled={matchesLoading}
+            className="rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/10 disabled:opacity-50"
           >
-            Recargar
+            {matchesLoading ? "Actualizando..." : "Recargar"}
           </button>
         </div>
 
         {matchesErr ? (
-          <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
+          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
             {matchesErr}
           </div>
         ) : null}
 
-        {matchesLoading ? (
-          <div className="mt-4 text-sm text-[var(--fifa-mute)]">Cargando partidos…</div>
-        ) : null}
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-white/10 text-left text-slate-300">
+                <th className="px-3 py-3">Fecha</th>
+                <th className="px-3 py-3">Local</th>
+                <th className="px-3 py-3">Visitante</th>
+                <th className="px-3 py-3">Marcador</th>
+                <th className="px-3 py-3">Estadio</th>
+                <th className="px-3 py-3">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {matchesLoading ? (
+                <tr>
+                  <td colSpan="6" className="px-3 py-6 text-slate-400">
+                    Cargando partidos...
+                  </td>
+                </tr>
+              ) : matches.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="px-3 py-6 text-slate-400">
+                    No hay partidos cargados para tu club.
+                  </td>
+                </tr>
+              ) : (
+                matches.map((match) => {
+                  const homeId = match?.homeClub?._id || match?.homeClub || "";
+                  const awayId = match?.awayClub?._id || match?.awayClub || "";
 
-        {!matchesLoading && matches.length === 0 ? (
-          <div className="mt-4 rounded-xl bg-black/20 ring-1 ring-[var(--fifa-line)] p-4 text-sm text-[var(--fifa-mute)]">
-            Aún no hay partidos registrados para tu club.
-          </div>
-        ) : null}
+                  return (
+                    <tr key={match._id} className="border-b border-white/5">
+                      <td className="px-3 py-3">{formatDateView(match.date)}</td>
+                      <td className="px-3 py-3">
+                        {clubMap[homeId]?.name || match?.homeClub?.name || "Club local"}
+                      </td>
+                      <td className="px-3 py-3">
+                        {clubMap[awayId]?.name || match?.awayClub?.name || "Club visitante"}
+                      </td>
+                      <td className="px-3 py-3">
+                        {Number(match?.scoreHome || 0)} - {Number(match?.scoreAway || 0)}
+                      </td>
+                      <td className="px-3 py-3">{match?.stadium || "-"}</td>
+                      <td className="px-3 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          {isAdminOrCaptain ? (
+                            <button
+                              type="button"
+                              onClick={() => openEditMatch(match)}
+                              className="rounded-lg border border-white/10 px-3 py-1.5 hover:bg-white/10"
+                            >
+                              Editar
+                            </button>
+                          ) : null}
 
-        {!matchesLoading && matches.length > 0 ? (
-          <div className="mt-4 grid gap-4">
-            {matches.map((match) => {
-              const homeId = match?.homeClub?._id || "";
-              const awayId = match?.awayClub?._id || "";
-              const homeName = match?.homeClub?.name || "Home";
-              const awayName = match?.awayClub?.name || "Away";
+                          {isAdminOrCaptain ? (
+                            <button
+                              type="button"
+                              onClick={() => openEditStats(match)}
+                              className="rounded-lg border border-sky-500/30 px-3 py-1.5 text-sky-200 hover:bg-sky-500/10"
+                            >
+                              PlayerStats
+                            </button>
+                          ) : null}
 
-              const isHome = String(homeId) === String(myClubId);
-              const myGoals = isHome
-                ? Number(match?.scoreHome ?? 0)
-                : Number(match?.scoreAway ?? 0);
-              const rivalGoals = isHome
-                ? Number(match?.scoreAway ?? 0)
-                : Number(match?.scoreHome ?? 0);
-
-              let resultLabel = "EMPATE";
-              let resultAccent = "var(--fifa-cyan)";
-
-              if (myGoals > rivalGoals) {
-                resultLabel = "VICTORIA";
-                resultAccent = "var(--fifa-neon)";
-              } else if (myGoals < rivalGoals) {
-                resultLabel = "DERROTA";
-                resultAccent = "var(--fifa-danger)";
-              }
-
-              return (
-                <article
-                  key={match._id}
-                  className="rounded-2xl bg-black/25 ring-1 ring-[var(--fifa-line)] p-4"
-                >
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <div className="text-xs text-[var(--fifa-mute)]">
-                          {match?.date ? new Date(match.date).toLocaleDateString() : "—"}
+                          {isAdmin ? (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMatch(match._id)}
+                              className="rounded-lg border border-red-500/30 px-3 py-1.5 text-red-300 hover:bg-red-500/10"
+                            >
+                              Eliminar
+                            </button>
+                          ) : null}
                         </div>
-                        <div
-                          className="text-[10px] font-extrabold tracking-widest"
-                          style={{ color: resultAccent }}
-                        >
-                          {resultLabel}
-                        </div>
-                      </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-                      <div className="mt-2 text-lg font-extrabold text-[var(--fifa-text)]">
-                        {homeName} <span className="text-[var(--fifa-mute)]">vs</span> {awayName}
-                      </div>
-
-                      <div className="mt-2 text-2xl font-extrabold text-[var(--fifa-text)]">
-                        {match?.scoreHome ?? 0} - {match?.scoreAway ?? 0}
-                      </div>
-
-                      <div className="mt-2 text-sm text-[var(--fifa-mute)]">
-                        {match?.stadium || "Sin estadio"}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openEditMatch(match)}
-                        className="rounded-lg bg-white/5 px-3 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-cyan)]/30 transition"
-                      >
-                        Editar partido
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => openEditStats(match)}
-                        className="rounded-lg bg-white/5 px-3 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-neon)]/30 transition"
-                      >
-                        Editar playerStats
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteMatch(match._id)}
-                        className="rounded-lg bg-black/20 px-3 py-2 text-sm font-semibold text-[var(--fifa-danger)] ring-1 ring-[var(--fifa-danger)]/30 hover:bg-[rgba(255,77,109,0.08)] transition"
-                      >
-                        Eliminar
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        ) : null}
-      </section>
-
-      {/* MODAL EDITAR PARTIDO */}
       {editMatch.open ? (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="max-w-3xl mx-auto mt-8 rounded-2xl p-6 bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold tracking-widest text-[var(--fifa-cyan)]">
-                  EDITAR PARTIDO
-                </div>
-                <div className="mt-1 text-sm text-[var(--fifa-mute)]">
-                  Actualiza datos básicos del encuentro.
-                </div>
-              </div>
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+          <h2 className="text-xl font-semibold">Editar partido</h2>
+
+          {editMatchErr ? (
+            <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+              {editMatchErr}
+            </div>
+          ) : null}
+
+          {editMatchOk ? (
+            <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+              {editMatchOk}
+            </div>
+          ) : null}
+
+          <form onSubmit={handleSaveEditMatch} className="mt-4 space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2">
+                <span className="text-sm text-slate-300">Club local</span>
+                <select
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+                  value={editMatch.homeClub}
+                  onChange={(e) =>
+                    setEditMatch((prev) => ({ ...prev, homeClub: e.target.value }))
+                  }
+                >
+                  <option value="">Selecciona club</option>
+                  {clubOptions.map((club) => (
+                    <option key={club.id} value={club.id}>
+                      {club.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-sm text-slate-300">Club visitante</span>
+                <select
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+                  value={editMatch.awayClub}
+                  onChange={(e) =>
+                    setEditMatch((prev) => ({ ...prev, awayClub: e.target.value }))
+                  }
+                >
+                  <option value="">Selecciona club</option>
+                  {clubOptions.map((club) => (
+                    <option key={club.id} value={club.id}>
+                      {club.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-sm text-slate-300">Fecha y hora</span>
+                <input
+                  type="datetime-local"
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+                  value={editMatch.date}
+                  onChange={(e) =>
+                    setEditMatch((prev) => ({ ...prev, date: e.target.value }))
+                  }
+                />
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-sm text-slate-300">Estadio</span>
+                <input
+                  type="text"
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+                  value={editMatch.stadium}
+                  onChange={(e) =>
+                    setEditMatch((prev) => ({ ...prev, stadium: e.target.value }))
+                  }
+                />
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-sm text-slate-300">Goles local</span>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+                  value={editMatch.scoreHome}
+                  onChange={(e) =>
+                    setEditMatch((prev) => ({ ...prev, scoreHome: e.target.value }))
+                  }
+                />
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-sm text-slate-300">Goles visitante</span>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+                  value={editMatch.scoreAway}
+                  onChange={(e) =>
+                    setEditMatch((prev) => ({ ...prev, scoreAway: e.target.value }))
+                  }
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="submit"
+                disabled={editMatch.saving}
+                className="rounded-xl bg-emerald-600 px-5 py-2.5 font-medium hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {editMatch.saving ? "Guardando..." : "Guardar cambios"}
+              </button>
 
               <button
                 type="button"
                 onClick={closeEditMatch}
-                className="rounded-lg bg-white/5 px-3 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)]"
+                className="rounded-xl border border-white/10 px-5 py-2.5 hover:bg-white/10"
               >
-                Cerrar
+                Cancelar
               </button>
             </div>
-
-            {editMatchErr ? (
-              <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
-                {editMatchErr}
-              </div>
-            ) : null}
-
-            {editMatchOk ? (
-              <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-neon)]/30 p-3 text-sm text-[var(--fifa-neon)]">
-                {editMatchOk}
-              </div>
-            ) : null}
-
-            <form onSubmit={saveEditMatch} className="mt-5 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Home club">
-                  <select
-                    value={editMatch.homeClub}
-                    onChange={(e) =>
-                      setEditMatch((prev) => ({ ...prev, homeClub: e.target.value }))
-                    }
-                    className="w-full rounded-xl px-3 py-3 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
-                  >
-                    <option value="">Selecciona home</option>
-                    {clubOptions.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-
-                <Field label="Away club">
-                  <select
-                    value={editMatch.awayClub}
-                    onChange={(e) =>
-                      setEditMatch((prev) => ({ ...prev, awayClub: e.target.value }))
-                    }
-                    className="w-full rounded-xl px-3 py-3 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
-                  >
-                    <option value="">Selecciona away</option>
-                    {clubOptions.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Field label="Fecha">
-                  <input
-                    type="date"
-                    value={editMatch.date}
-                    onChange={(e) =>
-                      setEditMatch((prev) => ({ ...prev, date: e.target.value }))
-                    }
-                    className="w-full rounded-xl px-3 py-3 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
-                  />
-                </Field>
-
-                <Field label="Estadio">
-                  <input
-                    value={editMatch.stadium}
-                    onChange={(e) =>
-                      setEditMatch((prev) => ({ ...prev, stadium: e.target.value }))
-                    }
-                    className="w-full rounded-xl px-3 py-3 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
-                  />
-                </Field>
-
-                <Field label="Marcador">
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      value={editMatch.scoreHome}
-                      onChange={(e) =>
-                        setEditMatch((prev) => ({
-                          ...prev,
-                          scoreHome: e.target.value,
-                        }))
-                      }
-                      className="w-full rounded-xl px-3 py-3 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      value={editMatch.scoreAway}
-                      onChange={(e) =>
-                        setEditMatch((prev) => ({
-                          ...prev,
-                          scoreAway: e.target.value,
-                        }))
-                      }
-                      className="w-full rounded-xl px-3 py-3 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
-                    />
-                  </div>
-                </Field>
-              </div>
-
-              <button
-                type="submit"
-                disabled={editMatch.saving}
-                className="w-full rounded-2xl px-4 py-3 bg-fifa-blue text-white font-extrabold tracking-wide hover:opacity-90 disabled:opacity-60 shadow-neon transition"
-              >
-                {editMatch.saving ? "Guardando..." : "Guardar cambios del partido"}
-              </button>
-            </form>
-          </div>
+          </form>
         </div>
       ) : null}
 
-      {/* MODAL EDITAR PLAYER STATS */}
       {editStats.open ? (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="max-w-4xl mx-auto mt-8 rounded-2xl p-6 bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold tracking-widest text-[var(--fifa-neon)]">
-                  EDITAR PLAYER STATS
-                </div>
-                <div className="mt-1 text-sm text-[var(--fifa-mute)]">
-                  Se conservan los stats del rival y solo editas los de tu club.
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold">Editar player stats</h2>
+
+            <button
+              type="button"
+              onClick={addEditStatsRow}
+              className="rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/10"
+            >
+              Agregar fila
+            </button>
+          </div>
+
+          {editStatsErr ? (
+            <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+              {editStatsErr}
+            </div>
+          ) : null}
+
+          {editStatsOk ? (
+            <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+              {editStatsOk}
+            </div>
+          ) : null}
+
+          <form onSubmit={handleSavePlayerStats} className="mt-4 space-y-4">
+            {editStats.playerStats.length === 0 ? (
+              <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
+                Este partido aún no tiene player stats para tu club. Puedes agregarlos ahora.
+              </div>
+            ) : null}
+
+            {editStats.playerStats.map((row, index) => (
+              <div
+                key={`edit-ps-${index}`}
+                className="grid gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-4 md:grid-cols-4"
+              >
+                <label className="space-y-2 md:col-span-2">
+                  <span className="text-sm text-slate-300">Jugador</span>
+                  <select
+                    className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+                    value={row.user}
+                    onChange={(e) =>
+                      updateEditStatsRow(index, { user: e.target.value })
+                    }
+                  >
+                    <option value="">Selecciona jugador</option>
+                    {memberOptions.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-sm text-slate-300">Goals</span>
+                  <input
+                    type="number"
+                    min="0"
+                    className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+                    value={row.goals}
+                    onChange={(e) =>
+                      updateEditStatsRow(index, { goals: e.target.value })
+                    }
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-sm text-slate-300">Assists</span>
+                  <input
+                    type="number"
+                    min="0"
+                    className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+                    value={row.assists}
+                    onChange={(e) =>
+                      updateEditStatsRow(index, { assists: e.target.value })
+                    }
+                  />
+                </label>
+
+                <div className="md:col-span-4">
+                  <button
+                    type="button"
+                    onClick={() => removeEditStatsRow(index)}
+                    className="rounded-xl border border-red-500/30 px-4 py-2 text-sm text-red-300 hover:bg-red-500/10"
+                  >
+                    Quitar fila
+                  </button>
                 </div>
               </div>
+            ))}
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="submit"
+                disabled={editStats.saving}
+                className="rounded-xl bg-emerald-600 px-5 py-2.5 font-medium hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {editStats.saving ? "Guardando..." : "Guardar player stats"}
+              </button>
 
               <button
                 type="button"
                 onClick={closeEditStats}
-                className="rounded-lg bg-white/5 px-3 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)]"
+                className="rounded-xl border border-white/10 px-5 py-2.5 hover:bg-white/10"
               >
-                Cerrar
+                Cancelar
               </button>
             </div>
-
-            {editStatsErr ? (
-              <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
-                {editStatsErr}
-              </div>
-            ) : null}
-
-            {editStatsOk ? (
-              <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-neon)]/30 p-3 text-sm text-[var(--fifa-neon)]">
-                {editStatsOk}
-              </div>
-            ) : null}
-
-            <form onSubmit={saveEditStats} className="mt-5 space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <InfoPanel
-                  title="Score Home"
-                  value={editStats.scoreHome}
-                  note={clubMap[editStats.homeClub]?.name || "Home"}
-                  accent="var(--fifa-cyan)"
-                />
-                <InfoPanel
-                  title="Score Away"
-                  value={editStats.scoreAway}
-                  note={clubMap[editStats.awayClub]?.name || "Away"}
-                  accent="var(--fifa-cyan)"
-                />
-                <InfoPanel
-                  title="Mis filas"
-                  value={editStats.playerStats.length}
-                  note="Tu club"
-                  accent="var(--fifa-neon)"
-                />
-                <InfoPanel
-                  title="Filas rival"
-                  value={editStats.rivalPlayerStats.length}
-                  note="Se conservan"
-                  accent="var(--fifa-mute)"
-                />
-              </div>
-
-              <div className="rounded-2xl bg-black/25 ring-1 ring-[var(--fifa-line)] p-4">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div>
-                    <div className="text-xs font-semibold tracking-widest text-[var(--fifa-neon)]">
-                      PLAYER STATS DE TU CLUB
-                    </div>
-                    <div className="text-sm text-[var(--fifa-mute)]">
-                      El rival no se toca, pero sí se enviará completo al backend.
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={addEditStatsRow}
-                    className="rounded-xl px-4 py-2 bg-white/5 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)] font-semibold hover:shadow-neon transition"
-                  >
-                    + Agregar jugador
-                  </button>
-                </div>
-
-                <div className="mt-4 space-y-3">
-                  {editStats.playerStats.map((ps, idx) => (
-                    <div
-                      key={idx}
-                      className="rounded-xl bg-black/25 ring-1 ring-[var(--fifa-line)] p-3 grid grid-cols-1 lg:grid-cols-12 gap-3"
-                    >
-                      <div className="lg:col-span-6">
-                        <div className="text-xs text-[var(--fifa-mute)] mb-1">Jugador</div>
-                        <select
-                          value={ps.user}
-                          onChange={(e) =>
-                            updateEditStatsRow(idx, {
-                              user: e.target.value,
-                              club: editStats.myClubSideId,
-                            })
-                          }
-                          className="w-full rounded-xl px-3 py-2 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
-                        >
-                          <option value="">Selecciona jugador</option>
-                          {myMembers.map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="lg:col-span-2">
-                        <div className="text-xs text-[var(--fifa-mute)] mb-1">Club</div>
-                        <input
-                          readOnly
-                          value={
-                            editStats.myClubSideId === editStats.homeClub
-                              ? `Home: ${clubMap[editStats.homeClub]?.name || "Home"}`
-                              : editStats.myClubSideId === editStats.awayClub
-                              ? `Away: ${clubMap[editStats.awayClub]?.name || "Away"}`
-                              : "—"
-                          }
-                          className="w-full rounded-xl px-3 py-2 bg-black/20 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-mute)]"
-                        />
-                      </div>
-
-                      <div className="lg:col-span-2">
-                        <div className="text-xs text-[var(--fifa-mute)] mb-1">Goles</div>
-                        <input
-                          type="number"
-                          min="0"
-                          value={ps.goals}
-                          onChange={(e) =>
-                            updateEditStatsRow(idx, { goals: e.target.value })
-                          }
-                          className="w-full rounded-xl px-3 py-2 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
-                        />
-                      </div>
-
-                      <div className="lg:col-span-2">
-                        <div className="text-xs text-[var(--fifa-mute)] mb-1">Asist</div>
-                        <div className="flex gap-2">
-                          <input
-                            type="number"
-                            min="0"
-                            value={ps.assists}
-                            onChange={(e) =>
-                              updateEditStatsRow(idx, { assists: e.target.value })
-                            }
-                            className="w-full rounded-xl px-3 py-2 bg-black/30 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-text)]"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeEditStatsRow(idx)}
-                            disabled={editStats.playerStats.length === 1}
-                            className="rounded-xl px-3 py-2 bg-black/20 ring-1 ring-[var(--fifa-line)] text-[var(--fifa-mute)] hover:text-[var(--fifa-text)] disabled:opacity-40"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {editStats.rivalPlayerStats.length > 0 ? (
-                  <div className="mt-4 rounded-xl bg-black/20 ring-1 ring-[var(--fifa-line)] p-4">
-                    <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
-                      STATS DEL RIVAL CONSERVADOS
-                    </div>
-
-                    <div className="mt-3 space-y-2">
-                      {editStats.rivalPlayerStats.map((ps, idx) => {
-                        const clubName = clubMap[ps.club]?.name || "Club";
-                        return (
-                          <div
-                            key={`${ps.user}-${ps.club}-${idx}`}
-                            className="flex items-center justify-between gap-3 rounded-lg bg-black/20 px-3 py-2"
-                          >
-                            <div className="text-sm text-[var(--fifa-text)] truncate">
-                              Jugador ID: {ps.user}
-                            </div>
-
-                            <div className="text-xs text-[var(--fifa-mute)]">
-                              {clubName} · G: {ps.goals} · A: {ps.assists}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <button
-                type="submit"
-                disabled={editStats.saving}
-                className="w-full rounded-2xl px-4 py-3 bg-fifa-blue text-white font-extrabold tracking-wide hover:opacity-90 disabled:opacity-60 shadow-neon transition"
-              >
-                {editStats.saving ? "Guardando..." : "Guardar playerStats"}
-              </button>
-            </form>
-          </div>
+          </form>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <label className="block">
-      <div className="text-xs text-[var(--fifa-mute)] mb-2">{label}</div>
-      {children}
-    </label>
-  );
-}
-
-function StatCard({ label, value }) {
-  return (
-    <div className="rounded-xl bg-black/25 p-4 ring-1 ring-[var(--fifa-line)]">
-      <div className="text-xs text-[var(--fifa-mute)]">{label}</div>
-      <div className="mt-1 text-lg font-extrabold text-[var(--fifa-text)] truncate">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function MiniInfo({ label, value }) {
-  return (
-    <div className="rounded-xl bg-black/25 p-3 ring-1 ring-[var(--fifa-line)]">
-      <div className="text-[10px] tracking-widest text-[var(--fifa-mute)]">{label}</div>
-      <div className="mt-1 text-lg font-extrabold text-[var(--fifa-text)]">{value}</div>
-    </div>
-  );
-}
-
-function InfoPanel({ title, value, note, accent }) {
-  return (
-    <div className="rounded-xl bg-black/25 p-4 ring-1 ring-[var(--fifa-line)]">
-      <div className="text-xs text-[var(--fifa-mute)]">{title}</div>
-      <div className="mt-1 text-2xl font-extrabold" style={{ color: accent }}>
-        {value}
-      </div>
-      <div className="mt-1 text-xs text-[var(--fifa-mute)]">{note}</div>
-    </div>
+    </section>
   );
 }
