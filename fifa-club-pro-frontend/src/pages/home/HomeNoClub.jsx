@@ -33,7 +33,7 @@ export default function HomeNoClub() {
           </button>
 
           <button
-            onClick={() => nav("/clubs/join")}
+            onClick={() => nav("/clubs")}
             className="rounded-lg bg-white/5 px-4 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon transition"
           >
             Unirse a club
