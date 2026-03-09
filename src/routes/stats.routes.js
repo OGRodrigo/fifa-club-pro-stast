@@ -1,10 +1,9 @@
 const express = require("express");
 const router = express.Router();
 
-// 📊 ESTADISTICAS Y RANKING
+// 📊 ANALYTICS / STATS
 const {
   getClubStats,
-  getLeagueTable,
   getAdvancedClubStats,
   getHistoricalRanking,
   getHeadToHead,
@@ -20,14 +19,11 @@ const {
   getHomeAwayPro,
   getClubSummary,
   getClubRivals,
-  getLeagueDashboard,
-  getLeagueTrends,
-  getPowerRanking
 } = require("../controllers/stats.controller");
 
 /**
  * =====================================================
- * RUTAS GENERALES (no dependen de un club específico)
+ * RUTAS GENERALES ANALÍTICAS
  * =====================================================
  */
 
@@ -39,27 +35,11 @@ router.get("/ranking", getHistoricalRanking);
 // GET /stats/ranking/average-points
 router.get("/ranking/average-points", getAveragePointsRanking);
 
-// 🏆 Tabla de posiciones (global)
-// GET /stats/league/table
-router.get("/league/table", getLeagueTable);
-
-// 🏟️ Dashboard de liga (resumen)
-// GET /stats/league/dashboard?limit=5
-router.get("/league/dashboard", getLeagueDashboard);
-
-// 📈 Trends por temporadas
-// GET /stats/league/trends?from=2026&to=2028
-router.get("/league/trends", getLeagueTrends);
-
-// ⚡ Power ranking ponderado
-// GET /stats/league/power-ranking?limit=10&last=5
-router.get("/league/power-ranking", getPowerRanking);
-
-// ⚔️ Head-to-head entre dos clubes (global)
+// ⚔️ Head-to-head entre dos clubes
 // GET /stats/h2h/:clubA/:clubB
 router.get("/h2h/:clubA/:clubB", getHeadToHead);
 
-// ⚔️ Comparación por temporada
+// ⚔️ Comparación por temporada entre dos clubes
 // GET /stats/compare/:clubA/:clubB/:season
 router.get("/compare/:clubA/:clubB/:season", compareClubsBySeason);
 
@@ -73,11 +53,11 @@ router.get("/compare/:clubA/:clubB/:season", compareClubsBySeason);
 // GET /stats/club/:clubId/advanced
 router.get("/club/:clubId/advanced", getAdvancedClubStats);
 
-// 🏠✈️ Local/Visitante (simple)
+// 🏠✈️ Local/Visitante simple
 // GET /stats/club/:clubId/home-away
 router.get("/club/:clubId/home-away", getHomeAwayStats);
 
-// 🏠✈️ Local/Visitante (pro)
+// 🏠✈️ Local/Visitante pro
 // GET /stats/club/:clubId/home-away-pro
 router.get("/club/:clubId/home-away-pro", getHomeAwayPro);
 
@@ -97,15 +77,15 @@ router.get("/club/:clubId/season/:seasonYear", getClubSeasonStats);
 // GET /stats/club/:clubId/seasons
 router.get("/club/:clubId/seasons", getClubSeasonComparison);
 
-// 🥇 Mejores temporadas del club
+// 🥇 Mejores temporadas
 // GET /stats/club/:clubId/best-seasons?limit=3
 router.get("/club/:clubId/best-seasons", getBestClubSeasons);
 
-// 🏆 Mejor y peor temporada del club
+// 🏆 Mejor y peor temporada
 // GET /stats/club/:clubId/best-worst-season
 router.get("/club/:clubId/best-worst-season", getBestWorstSeason);
 
-// 📌 Dashboard summary (KPI)
+// 📌 Dashboard summary club
 // GET /stats/club/:clubId/summary
 router.get("/club/:clubId/summary", getClubSummary);
 
@@ -116,7 +96,6 @@ router.get("/club/:clubId/rivals", getClubRivals);
 /**
  * =====================================================
  * ESTA RUTA SIEMPRE AL FINAL
- * (porque captura /:clubId)
  * =====================================================
  */
 

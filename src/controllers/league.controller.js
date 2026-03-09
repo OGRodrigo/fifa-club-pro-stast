@@ -5,8 +5,12 @@ const Match = require("../models/Match");
  * =====================================================
  * LEAGUE CONTROLLER
  * -----------------------------------------------------
- * - Dashboard general: tabla + últimos partidos + leaderboards
- * - Soporta filtro por temporada via query: ?season=2026
+ * Liga = todo lo global:
+ * - dashboard
+ * - tabla
+ * - seasons
+ * - trends
+ * - power ranking
  * =====================================================
  */
 
@@ -24,33 +28,37 @@ const initRow = (club) => ({
   points: 0,
 });
 
-// Helper: orden de tabla (ranking)
+// Helper: orden de tabla
 const sortTable = (a, b) => {
   if (b.points !== a.points) return b.points - a.points;
   if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
   return b.goalsFor - a.goalsFor;
 };
 
+const toIdStr = (id) => id?.toString();
+
+const getMatchSeason = (match) => {
+  const seasonValue = Number(match?.season);
+  if (Number.isFinite(seasonValue)) return seasonValue;
+
+  const fallback = new Date(match?.date);
+  if (Number.isNaN(fallback.getTime())) return null;
+
+  return fallback.getFullYear();
+};
+
 /**
  * =====================================================
- * Leaderboards LIGA (todos los clubes)
- * -----------------------------------------------------
- * - topScorers: por goals
- * - topAssists: por assists
- * - mvp: por points (g*2 + a) + bonus win/loss basado en match result
- *
- * IMPORTANTE:
- * - Usa Match.playerStats (si están vacíos, vendrá todo vacío)
+ * Leaderboards de liga
  * =====================================================
  */
 const buildLeagueLeaderboards = (matches, limit = 10) => {
-  const map = new Map(); // userId -> row
+  const map = new Map();
 
   for (const m of matches) {
     const ps = Array.isArray(m.playerStats) ? m.playerStats : [];
     if (ps.length === 0) continue;
 
-    // winner club id (para bonus de puntos)
     let winnerClubId = null;
     if (Number(m.scoreHome) > Number(m.scoreAway)) {
       winnerClubId = m.homeClub?._id?.toString() || m.homeClub?.toString();
@@ -58,8 +66,7 @@ const buildLeagueLeaderboards = (matches, limit = 10) => {
       winnerClubId = m.awayClub?._id?.toString() || m.awayClub?.toString();
     }
 
-    // Para played por match (solo si el jugador aparece en este match)
-    const seenThisMatch = new Set(); // userId
+    const seenThisMatch = new Set();
 
     for (const row of ps) {
       const uid = row.user?._id ? row.user._id.toString() : row.user?.toString();
@@ -89,8 +96,6 @@ const buildLeagueLeaderboards = (matches, limit = 10) => {
       agg.goals += g;
       agg.assists += a;
       agg.contrib += g + a;
-
-      // points base
       agg.points += g * 2 + a;
 
       if (!seenThisMatch.has(uid)) {
@@ -98,8 +103,6 @@ const buildLeagueLeaderboards = (matches, limit = 10) => {
         seenThisMatch.add(uid);
       }
 
-      // Bonus por resultado (solo si hay winner)
-      // +1 si el club del jugador fue el ganador, -1 si perdió
       if (winnerClubId && clubId) {
         if (clubId === winnerClubId) agg.points += 1;
         else agg.points -= 1;
@@ -149,31 +152,25 @@ const buildLeagueLeaderboards = (matches, limit = 10) => {
 
 /**
  * =====================================================
- * EXTRA: Rankings por club (attack/defense/clean sheets)
- * -----------------------------------------------------
- * - bestAttack: más GF
- * - bestDefense: menos GC (con PJ > 0)
- * - cleanSheets: partidos con GC = 0 (por club)
+ * Extras por club
  * =====================================================
  */
 const buildClubExtras = ({ table, matches, limit = 5 }) => {
-  const byClub = new Map(); // clubId -> { cleanSheets }
+  const byClub = new Map();
 
-  // Inicializa cleanSheets = 0 para todos los clubes que existan en table
   for (const row of table) {
     const id = row.clubId?.toString();
     if (!id) continue;
     byClub.set(id, { clubId: row.clubId, clubName: row.clubName, cleanSheets: 0 });
   }
 
-  // Cuenta clean sheets por club desde matches
   for (const m of matches) {
     const homeId = m.homeClub?._id?.toString() || m.homeClub?.toString();
     const awayId = m.awayClub?._id?.toString() || m.awayClub?.toString();
     if (!homeId || !awayId) continue;
 
-    const homeGA = Number(m.scoreAway || 0); // goles que recibió home
-    const awayGA = Number(m.scoreHome || 0); // goles que recibió away
+    const homeGA = Number(m.scoreAway || 0);
+    const awayGA = Number(m.scoreHome || 0);
 
     if (homeGA === 0 && byClub.has(homeId)) byClub.get(homeId).cleanSheets += 1;
     if (awayGA === 0 && byClub.has(awayId)) byClub.get(awayId).cleanSheets += 1;
@@ -198,17 +195,6 @@ const buildClubExtras = ({ table, matches, limit = 5 }) => {
 /**
  * =====================================================
  * GET /league/dashboard
- * -----------------------------------------------------
- * Query:
- *  - season=2026 (opcional) -> filtra TODO por temporada
- *
- * Devuelve:
- * - table (top 10)
- * - recentMatches (últimos 8)
- * - leaderboards (goleadores / asistencias / mvp)
- * - extras (bestAttack / bestDefense / cleanSheets)
- * - seasonUsed
- * - availableSeasons
  * =====================================================
  */
 exports.getLeagueDashboard = async (req, res) => {
@@ -237,7 +223,6 @@ exports.getLeagueDashboard = async (req, res) => {
       .filter((n) => Number.isFinite(n))
       .sort((a, b) => b - a);
 
-    // Si no viene season, usamos la más reciente disponible
     const seasonUsed =
       parsedSeason !== null
         ? parsedSeason
@@ -256,13 +241,11 @@ exports.getLeagueDashboard = async (req, res) => {
       .populate("playerStats.user", "username gamerTag")
       .sort({ date: -1 });
 
-    // Mapa clubId -> fila acumulada
     const map = new Map();
     clubs.forEach((club) => {
       map.set(club._id.toString(), initRow(club));
     });
 
-    // Acumular stats de tabla
     matches.forEach((match) => {
       const homeId = match.homeClub?._id?.toString();
       const awayId = match.awayClub?._id?.toString();
@@ -309,11 +292,7 @@ exports.getLeagueDashboard = async (req, res) => {
     table.sort(sortTable);
 
     const recentMatches = matches.slice(0, 8);
-
-    // Leaderboards LIGA
     const leaderboards = buildLeagueLeaderboards(matches, 10);
-
-    // Extras por club
     const extras = buildClubExtras({ table, matches, limit: 5 });
 
     return res.status(200).json({
@@ -333,9 +312,91 @@ exports.getLeagueDashboard = async (req, res) => {
 
 /**
  * =====================================================
+ * GET /league/table?season=2026
+ * =====================================================
+ */
+exports.getLeagueTable = async (req, res) => {
+  try {
+    const seasonParam = req.query?.season;
+    const season =
+      seasonParam !== undefined && seasonParam !== "" ? Number(seasonParam) : null;
+
+    if (
+      seasonParam !== undefined &&
+      seasonParam !== "" &&
+      Number.isNaN(season)
+    ) {
+      return res.status(400).json({ message: "Season inválida" });
+    }
+
+    const clubs = await Club.find();
+    const filter = {};
+    if (season !== null) filter.season = season;
+
+    const matches = await Match.find(filter);
+
+    const map = new Map();
+    clubs.forEach((club) => {
+      map.set(club._id.toString(), initRow(club));
+    });
+
+    matches.forEach((match) => {
+      const homeId = toIdStr(match.homeClub);
+      const awayId = toIdStr(match.awayClub);
+      if (!homeId || !awayId) return;
+
+      const homeRow = map.get(homeId);
+      const awayRow = map.get(awayId);
+      if (!homeRow || !awayRow) return;
+
+      const homeGoals = Number(match.scoreHome || 0);
+      const awayGoals = Number(match.scoreAway || 0);
+
+      homeRow.played += 1;
+      awayRow.played += 1;
+
+      homeRow.goalsFor += homeGoals;
+      homeRow.goalsAgainst += awayGoals;
+
+      awayRow.goalsFor += awayGoals;
+      awayRow.goalsAgainst += homeGoals;
+
+      if (homeGoals > awayGoals) {
+        homeRow.wins += 1;
+        homeRow.points += 3;
+        awayRow.losses += 1;
+      } else if (homeGoals < awayGoals) {
+        awayRow.wins += 1;
+        awayRow.points += 3;
+        homeRow.losses += 1;
+      } else {
+        homeRow.draws += 1;
+        awayRow.draws += 1;
+        homeRow.points += 1;
+        awayRow.points += 1;
+      }
+    });
+
+    const table = Array.from(map.values()).map((row) => ({
+      ...row,
+      goalDifference: row.goalsFor - row.goalsAgainst,
+    }));
+
+    table.sort(sortTable);
+
+    return res.status(200).json({
+      season,
+      table,
+    });
+  } catch (error) {
+    console.error("getLeagueTable ERROR:", error);
+    return res.status(500).json({ message: "Error al generar tabla de posiciones" });
+  }
+};
+
+/**
+ * =====================================================
  * GET /league/table/:season
- * -----------------------------------------------------
- * Devuelve tabla completa para una season.
  * =====================================================
  */
 exports.getLeagueTableBySeason = async (req, res) => {
@@ -410,8 +471,6 @@ exports.getLeagueTableBySeason = async (req, res) => {
 /**
  * =====================================================
  * GET /league/seasons
- * -----------------------------------------------------
- * Devuelve temporadas disponibles según Match.season
  * =====================================================
  */
 exports.getLeagueSeasons = async (req, res) => {
@@ -427,5 +486,266 @@ exports.getLeagueSeasons = async (req, res) => {
   } catch (err) {
     console.error("getLeagueSeasons ERROR:", err);
     return res.status(500).json({ message: "Error al obtener temporadas" });
+  }
+};
+
+/**
+ * =====================================================
+ * GET /league/trends?from=2026&to=2028
+ * =====================================================
+ */
+exports.getLeagueTrends = async (req, res) => {
+  try {
+    const from = Number(req.query.from);
+    const to = Number(req.query.to);
+
+    if (Number.isNaN(from) || Number.isNaN(to) || from > to) {
+      return res.status(400).json({ message: "Rango inválido (from/to)" });
+    }
+
+    const clubs = await Club.find();
+    const nameMap = {};
+    clubs.forEach((c) => {
+      nameMap[c._id.toString()] = c.name;
+    });
+
+    const matches = await Match.find({
+      season: { $gte: from, $lte: to },
+    }).sort({ date: 1 });
+
+    const seasons = {};
+
+    const ensureClubStats = (year, clubId) => {
+      if (!seasons[year].table[clubId]) {
+        seasons[year].table[clubId] = {
+          clubId,
+          clubName: nameMap[clubId] || "Desconocido",
+          played: 0,
+          wins: 0,
+          draws: 0,
+          losses: 0,
+          goalsFor: 0,
+          goalsAgainst: 0,
+          points: 0,
+        };
+      }
+      return seasons[year].table[clubId];
+    };
+
+    matches.forEach((m) => {
+      const year = getMatchSeason(m);
+      if (!year || year < from || year > to) return;
+
+      if (!seasons[year]) {
+        seasons[year] = {
+          season: year,
+          matches: 0,
+          totalGoals: 0,
+          avgGoalsPerMatch: 0,
+          table: {},
+        };
+      }
+
+      seasons[year].matches++;
+      seasons[year].totalGoals += m.scoreHome + m.scoreAway;
+
+      const homeId = toIdStr(m.homeClub);
+      const awayId = toIdStr(m.awayClub);
+
+      const home = ensureClubStats(year, homeId);
+      const away = ensureClubStats(year, awayId);
+
+      home.played++;
+      away.played++;
+      home.goalsFor += m.scoreHome;
+      home.goalsAgainst += m.scoreAway;
+      away.goalsFor += m.scoreAway;
+      away.goalsAgainst += m.scoreHome;
+
+      if (m.scoreHome > m.scoreAway) {
+        home.wins++;
+        home.points += 3;
+        away.losses++;
+      } else if (m.scoreHome < m.scoreAway) {
+        away.wins++;
+        away.points += 3;
+        home.losses++;
+      } else {
+        home.draws++;
+        home.points += 1;
+        away.draws++;
+        away.points += 1;
+      }
+    });
+
+    const result = Object.values(seasons)
+      .sort((a, b) => a.season - b.season)
+      .map((s) => {
+        s.avgGoalsPerMatch = s.matches
+          ? Number((s.totalGoals / s.matches).toFixed(2))
+          : 0;
+
+        const ranking = Object.values(s.table)
+          .map((t) => ({ ...t, goalDifference: t.goalsFor - t.goalsAgainst }))
+          .sort((a, b) => {
+            if (b.points !== a.points) return b.points - a.points;
+            if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
+            return b.goalsFor - a.goalsFor;
+          });
+
+        const champion = ranking[0] || null;
+        const bestAttack =
+          [...ranking].sort((a, b) => b.goalsFor - a.goalsFor)[0] || null;
+        const bestDefense =
+          [...ranking].sort((a, b) => a.goalsAgainst - b.goalsAgainst)[0] || null;
+
+        return {
+          season: s.season,
+          matches: s.matches,
+          totalGoals: s.totalGoals,
+          avgGoalsPerMatch: s.avgGoalsPerMatch,
+          champion: champion
+            ? {
+                clubId: champion.clubId,
+                clubName: champion.clubName,
+                points: champion.points,
+                goalDifference: champion.goalDifference,
+              }
+            : null,
+          bestAttack: bestAttack
+            ? {
+                clubId: bestAttack.clubId,
+                clubName: bestAttack.clubName,
+                goalsFor: bestAttack.goalsFor,
+              }
+            : null,
+          bestDefense: bestDefense
+            ? {
+                clubId: bestDefense.clubId,
+                clubName: bestDefense.clubName,
+                goalsAgainst: bestDefense.goalsAgainst,
+              }
+            : null,
+        };
+      });
+
+    return res.status(200).json({ range: { from, to }, seasons: result });
+  } catch (error) {
+    console.error("getLeagueTrends ERROR:", error);
+    return res.status(500).json({ message: "Error al obtener trends de liga" });
+  }
+};
+
+/**
+ * =====================================================
+ * GET /league/power-ranking?limit=10&last=5
+ * =====================================================
+ */
+exports.getPowerRanking = async (req, res) => {
+  try {
+    const limit = Number(req.query.limit) || 10;
+    const last = Number(req.query.last) || 5;
+
+    const clubs = await Club.find();
+    const matches = await Match.find().sort({ date: -1 });
+
+    const nameMap = {};
+    clubs.forEach((c) => {
+      nameMap[c._id.toString()] = c.name;
+    });
+
+    const init = (clubId) => ({
+      clubId,
+      clubName: nameMap[clubId] || "Desconocido",
+      played: 0,
+      points: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      lastMatches: [],
+    });
+
+    const stats = {};
+    clubs.forEach((c) => {
+      stats[c._id.toString()] = init(c._id.toString());
+    });
+
+    matches.forEach((m) => {
+      const homeId = toIdStr(m.homeClub);
+      const awayId = toIdStr(m.awayClub);
+
+      const home = stats[homeId];
+      const away = stats[awayId];
+      if (!home || !away) return;
+
+      home.played++;
+      away.played++;
+      home.goalsFor += m.scoreHome;
+      home.goalsAgainst += m.scoreAway;
+      away.goalsFor += m.scoreAway;
+      away.goalsAgainst += m.scoreHome;
+
+      let homePts = 0;
+      let awayPts = 0;
+
+      if (m.scoreHome > m.scoreAway) {
+        homePts = 3;
+        awayPts = 0;
+      } else if (m.scoreHome < m.scoreAway) {
+        homePts = 0;
+        awayPts = 3;
+      } else {
+        homePts = 1;
+        awayPts = 1;
+      }
+
+      home.points += homePts;
+      away.points += awayPts;
+
+      if (home.lastMatches.length < last) home.lastMatches.push(homePts);
+      if (away.lastMatches.length < last) away.lastMatches.push(awayPts);
+    });
+
+    const list = Object.values(stats).map((s) => {
+      const gd = s.goalsFor - s.goalsAgainst;
+      const ppm = s.played ? s.points / s.played : 0;
+      const gdpm = s.played ? gd / s.played : 0;
+
+      const pointsLast = s.lastMatches.reduce((a, b) => a + b, 0);
+      const form = s.lastMatches.length > 0 ? pointsLast / (s.lastMatches.length * 3) : 0;
+
+      const score = Number(((0.6 * ppm) + (0.25 * gdpm) + (0.15 * form)).toFixed(4));
+
+      return {
+        clubId: s.clubId,
+        clubName: s.clubName,
+        played: s.played,
+        points: s.points,
+        goalsFor: s.goalsFor,
+        goalsAgainst: s.goalsAgainst,
+        goalDifference: gd,
+        ppm: Number(ppm.toFixed(2)),
+        gdpm: Number(gdpm.toFixed(2)),
+        lastN: s.lastMatches.length,
+        pointsLastN: pointsLast,
+        form: Number((form * 100).toFixed(2)),
+        powerScore: score,
+      };
+    });
+
+    list.sort((a, b) => {
+      if (b.powerScore !== a.powerScore) return b.powerScore - a.powerScore;
+      if (b.points !== a.points) return b.points - a.points;
+      return b.goalDifference - a.goalDifference;
+    });
+
+    return res.status(200).json({
+      limit,
+      last,
+      weights: { ppm: 0.6, gdpm: 0.25, form: 0.15 },
+      ranking: list.slice(0, limit),
+    });
+  } catch (error) {
+    console.error("getPowerRanking ERROR:", error);
+    return res.status(500).json({ message: "Error al obtener power ranking" });
   }
 };
