@@ -1,14 +1,12 @@
-// src/pages/Clubs.jsx
-// NOTA: Esta pantalla es "privada" (solo debería verse con sesión iniciada).
-// Aquí SOLO listamos clubs y permitimos seleccionar uno para definir el contexto clubId + role.
-// src/pages/Clubs.jsx
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { requestJoinClub } from "../api/clubs";
+import { useToast } from "../ui/ToastContext";
 
 export default function Clubs() {
   const { setClubContext } = useAuth();
+  const toast = useToast();
 
   const [clubs, setClubs] = useState([]);
   const [err, setErr] = useState("");
@@ -46,7 +44,6 @@ export default function Clubs() {
     try {
       setActionLoadingId(clubId);
 
-      // Este endpoint solo funciona si YA perteneces al club
       const res = await api.get(`/clubs/${clubId}/me`);
 
       setClubContext({
@@ -54,19 +51,18 @@ export default function Clubs() {
         role: res.data.role,
       });
 
-      alert("✅ Club seleccionado correctamente. Ahora puedes volver a Inicio.");
+      toast.success("Club seleccionado correctamente.");
     } catch (e) {
       const status = e?.response?.status;
       const message =
         e?.response?.data?.message || e.message || "No se pudo seleccionar el club";
 
-      // Si da 403, probablemente no pertenece al club todavía
       if (status === 403) {
-        alert("No perteneces a este club todavía. Envía una solicitud para unirte.");
+        toast.info("No perteneces a este club todavía. Envía una solicitud para unirte.");
         return;
       }
 
-      alert(message);
+      toast.error(message);
     } finally {
       setActionLoadingId("");
     }
@@ -78,11 +74,11 @@ export default function Clubs() {
 
       await requestJoinClub(clubId);
 
-      alert("✅ Solicitud enviada correctamente.");
+      toast.success("Solicitud enviada correctamente.");
     } catch (e) {
       const message =
         e?.response?.data?.message || e.message || "No se pudo enviar la solicitud";
-      alert(message);
+      toast.error(message);
     } finally {
       setActionLoadingId("");
     }

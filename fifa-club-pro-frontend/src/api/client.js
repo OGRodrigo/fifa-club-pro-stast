@@ -1,22 +1,11 @@
-// src/api/client.js
 import axios from "axios";
+import { runGlobalLogout } from "../auth/sessionManager";
 
-/**
- * Instancia única de axios
- * - Usa variable de entorno para backend
- * - Mantiene fallback local para desarrollo
- * - Permite enviar credenciales si luego las necesitas
- * - Agrega JWT automáticamente en cada request
- */
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
   withCredentials: true,
 });
 
-/**
- * Interceptor de request
- * - Antes de cada request agrega Authorization: Bearer <token>
- */
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
@@ -28,4 +17,21 @@ api.interceptors.request.use(
     return config;
   },
   (error) => Promise.reject(error)
+);
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    const requestUrl = error?.config?.url || "";
+
+    const isAuthEndpoint =
+      requestUrl.includes("/auth/login") || requestUrl.includes("/auth/register");
+
+    if (status === 401 && !isAuthEndpoint) {
+      runGlobalLogout();
+    }
+
+    return Promise.reject(error);
+  }
 );
