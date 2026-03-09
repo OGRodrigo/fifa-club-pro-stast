@@ -14,15 +14,28 @@ const parseDateOrNull = (value) => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
+const getMatchSeason = (match) => {
+  const seasonValue = Number(match?.season);
+  if (Number.isFinite(seasonValue)) return seasonValue;
+
+  const fallback = new Date(match?.date);
+  if (Number.isNaN(fallback.getTime())) return null;
+
+  return fallback.getFullYear();
+};
+
 const buildMatchFilter = ({ clubId, season, from, to }) => {
   const filter = {};
 
   // Prioridad absoluta: season
   if (season !== undefined && season !== null && season !== "") {
     const s = Number(season);
-    if (!Number.isNaN(s)) {
-      filter.season = s;
+
+    if (Number.isNaN(s)) {
+      return { __invalidSeason: true };
     }
+
+    filter.season = s;
   } else {
     const fromDate = parseDateOrNull(from);
     const toDate = parseDateOrNull(to);
@@ -32,8 +45,13 @@ const buildMatchFilter = ({ clubId, season, from, to }) => {
 
     if (fromDate || toDate) {
       filter.date = {};
+
       if (fromDate) filter.date.$gte = fromDate;
-      if (toDate) filter.date.$lte = toDate;
+
+      if (toDate) {
+        toDate.setHours(23, 59, 59, 999);
+        filter.date.$lte = toDate;
+      }
     }
   }
 
@@ -57,16 +75,26 @@ exports.getClubStats = async (req, res) => {
     if (!club) return res.status(404).json({ message: "Club no encontrado" });
 
     const filter = buildMatchFilter({ clubId, season, from, to });
+
+    if (filter.__invalidSeason) {
+      return res.status(400).json({ message: "Season inválida" });
+    }
+
     if (filter.__invalidDate) {
       return res.status(400).json({ message: `Fecha inválida en '${filter.field}'` });
     }
 
     const matches = await Match.find(filter);
 
-    let played = 0, wins = 0, draws = 0, losses = 0;
-    let goalsFor = 0, goalsAgainst = 0, points = 0;
+    let played = 0,
+      wins = 0,
+      draws = 0,
+      losses = 0;
+    let goalsFor = 0,
+      goalsAgainst = 0,
+      points = 0;
 
-    matches.forEach(m => {
+    matches.forEach((m) => {
       played++;
       const isHome = toIdStr(m.homeClub) === toIdStr(clubId);
       const gf = isHome ? m.scoreHome : m.scoreAway;
@@ -75,9 +103,13 @@ exports.getClubStats = async (req, res) => {
       goalsFor += gf;
       goalsAgainst += ga;
 
-      if (gf > ga) { wins++; points += 3; }
-      else if (gf === ga) { draws++; points += 1; }
-      else losses++;
+      if (gf > ga) {
+        wins++;
+        points += 3;
+      } else if (gf === ga) {
+        draws++;
+        points += 1;
+      } else losses++;
     });
 
     return res.json({
@@ -90,9 +122,8 @@ exports.getClubStats = async (req, res) => {
       goalsAgainst,
       goalDifference: goalsFor - goalsAgainst,
       points,
-      winRate: played ? Number(((wins / played) * 100).toFixed(2)) : 0
+      winRate: played ? Number(((wins / played) * 100).toFixed(2)) : 0,
     });
-
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Error al obtener stats" });
@@ -178,16 +209,25 @@ exports.getAdvancedClubStats = async (req, res) => {
     if (!club) return res.status(404).json({ message: "Club no encontrado" });
 
     const filter = buildMatchFilter({ clubId, season, from, to });
+
+    if (filter.__invalidSeason) {
+      return res.status(400).json({ message: "Season inválida" });
+    }
+
     if (filter.__invalidDate) {
       return res.status(400).json({ message: `Fecha inválida en '${filter.field}'` });
     }
 
     const matches = await Match.find(filter);
 
-    let played = 0, goalsFor = 0, goalsAgainst = 0;
-    let cleanSheets = 0, home = 0, away = 0;
+    let played = 0,
+      goalsFor = 0,
+      goalsAgainst = 0;
+    let cleanSheets = 0,
+      home = 0,
+      away = 0;
 
-    matches.forEach(m => {
+    matches.forEach((m) => {
       const isHome = toIdStr(m.homeClub) === toIdStr(clubId);
       const gf = isHome ? m.scoreHome : m.scoreAway;
       const ga = isHome ? m.scoreAway : m.scoreHome;
@@ -211,10 +251,9 @@ exports.getAdvancedClubStats = async (req, res) => {
       matchesAsAway: away,
       averages: {
         goalsForPerMatch: played ? Number((goalsFor / played).toFixed(2)) : 0,
-        goalsAgainstPerMatch: played ? Number((goalsAgainst / played).toFixed(2)) : 0
-      }
+        goalsAgainstPerMatch: played ? Number((goalsAgainst / played).toFixed(2)) : 0,
+      },
     });
-
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Error stats avanzadas" });
@@ -494,13 +533,15 @@ exports.getClubSeasonComparison = async (req, res) => {
     if (!club) return res.status(404).json({ message: "Club no encontrado" });
 
     const matches = await Match.find({
-      $or: [{ homeClub: clubId }, { awayClub: clubId }]
+      $or: [{ homeClub: clubId }, { awayClub: clubId }],
     });
 
     const seasons = {};
 
     matches.forEach((match) => {
-      const year = new Date(match.date).getFullYear();
+      const year = getMatchSeason(match);
+      if (!year) return;
+
       if (!seasons[year]) {
         seasons[year] = {
           season: year,
@@ -510,7 +551,7 @@ exports.getClubSeasonComparison = async (req, res) => {
           losses: 0,
           goalsFor: 0,
           goalsAgainst: 0,
-          points: 0
+          points: 0,
         };
       }
 
@@ -524,9 +565,15 @@ exports.getClubSeasonComparison = async (req, res) => {
       stats.goalsFor += gf;
       stats.goalsAgainst += ga;
 
-      if (gf > ga) { stats.wins++; stats.points += 3; }
-      else if (gf === ga) { stats.draws++; stats.points += 1; }
-      else { stats.losses++; }
+      if (gf > ga) {
+        stats.wins++;
+        stats.points += 3;
+      } else if (gf === ga) {
+        stats.draws++;
+        stats.points += 1;
+      } else {
+        stats.losses++;
+      }
     });
 
     const result = Object.values(seasons).sort((a, b) => a.season - b.season);
@@ -549,16 +596,26 @@ exports.getBestClubSeasons = async (req, res) => {
     if (!club) return res.status(404).json({ message: "Club no encontrado" });
 
     const matches = await Match.find({
-      $or: [{ homeClub: clubId }, { awayClub: clubId }]
+      $or: [{ homeClub: clubId }, { awayClub: clubId }],
     });
 
     const seasons = {};
 
     matches.forEach((match) => {
-      const year = new Date(match.date).getFullYear();
+      const year = getMatchSeason(match);
+      if (!year) return;
 
       if (!seasons[year]) {
-        seasons[year] = { season: year, played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0 };
+        seasons[year] = {
+          season: year,
+          played: 0,
+          wins: 0,
+          draws: 0,
+          losses: 0,
+          goalsFor: 0,
+          goalsAgainst: 0,
+          points: 0,
+        };
       }
 
       const stats = seasons[year];
@@ -571,9 +628,15 @@ exports.getBestClubSeasons = async (req, res) => {
       stats.goalsFor += gf;
       stats.goalsAgainst += ga;
 
-      if (gf > ga) { stats.wins++; stats.points += 3; }
-      else if (gf === ga) { stats.draws++; stats.points += 1; }
-      else { stats.losses++; }
+      if (gf > ga) {
+        stats.wins++;
+        stats.points += 3;
+      } else if (gf === ga) {
+        stats.draws++;
+        stats.points += 1;
+      } else {
+        stats.losses++;
+      }
     });
 
     const ranked = Object.values(seasons)
@@ -591,7 +654,6 @@ exports.getBestClubSeasons = async (req, res) => {
     return res.status(500).json({ message: "Error al obtener mejores temporadas" });
   }
 };
-
 // 📊 RANKING HISTÓRICO POR PROMEDIO DE PUNTOS
 exports.getAveragePointsRanking = async (req, res) => {
   try {
@@ -652,14 +714,24 @@ exports.getBestWorstSeason = async (req, res) => {
     if (!club) return res.status(404).json({ message: "Club no encontrado" });
 
     const matches = await Match.find({
-      $or: [{ homeClub: clubId }, { awayClub: clubId }]
+      $or: [{ homeClub: clubId }, { awayClub: clubId }],
     });
 
     const seasons = {};
 
     matches.forEach((match) => {
-      const year = new Date(match.date).getFullYear();
-      if (!seasons[year]) seasons[year] = { season: year, played: 0, points: 0, goalsFor: 0, goalsAgainst: 0 };
+      const year = getMatchSeason(match);
+      if (!year) return;
+
+      if (!seasons[year]) {
+        seasons[year] = {
+          season: year,
+          played: 0,
+          points: 0,
+          goalsFor: 0,
+          goalsAgainst: 0,
+        };
+      }
 
       const isHome = toIdStr(match.homeClub) === clubIdStr;
       const gf = isHome ? match.scoreHome : match.scoreAway;
@@ -674,8 +746,12 @@ exports.getBestWorstSeason = async (req, res) => {
     });
 
     const seasonList = Object.values(seasons);
+
     if (seasonList.length === 0) {
-      return res.status(200).json({ club: club.name, message: "El club no tiene temporadas registradas" });
+      return res.status(200).json({
+        club: club.name,
+        message: "El club no tiene temporadas registradas",
+      });
     }
 
     seasonList.sort((a, b) => {
@@ -692,14 +768,14 @@ exports.getBestWorstSeason = async (req, res) => {
         season: bestSeason.season,
         played: bestSeason.played,
         points: bestSeason.points,
-        goalDifference: bestSeason.goalsFor - bestSeason.goalsAgainst
+        goalDifference: bestSeason.goalsFor - bestSeason.goalsAgainst,
       },
       worstSeason: {
         season: worstSeason.season,
         played: worstSeason.played,
         points: worstSeason.points,
-        goalDifference: worstSeason.goalsFor - worstSeason.goalsAgainst
-      }
+        goalDifference: worstSeason.goalsFor - worstSeason.goalsAgainst,
+      },
     });
   } catch (error) {
     console.error(error);
@@ -817,6 +893,11 @@ exports.getHomeAwayPro = async (req, res) => {
     if (!club) return res.status(404).json({ message: "Club no encontrado" });
 
     const filter = buildMatchFilter({ clubId, season, from, to });
+
+    if (filter.__invalidSeason) {
+      return res.status(400).json({ message: "Season inválida" });
+    }
+
     if (filter.__invalidDate) {
       return res.status(400).json({ message: `Fecha inválida en '${filter.field}'` });
     }
@@ -824,14 +905,19 @@ exports.getHomeAwayPro = async (req, res) => {
     const matches = await Match.find(filter);
 
     const init = () => ({
-      played: 0, wins: 0, draws: 0, losses: 0,
-      goalsFor: 0, goalsAgainst: 0, points: 0
+      played: 0,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      points: 0,
     });
 
     const home = init();
     const away = init();
 
-    matches.forEach(m => {
+    matches.forEach((m) => {
       const isHome = toIdStr(m.homeClub) === toIdStr(clubId);
       const bucket = isHome ? home : away;
       const gf = isHome ? m.scoreHome : m.scoreAway;
@@ -841,30 +927,32 @@ exports.getHomeAwayPro = async (req, res) => {
       bucket.goalsFor += gf;
       bucket.goalsAgainst += ga;
 
-      if (gf > ga) { bucket.wins++; bucket.points += 3; }
-      else if (gf === ga) { bucket.draws++; bucket.points += 1; }
-      else bucket.losses++;
+      if (gf > ga) {
+        bucket.wins++;
+        bucket.points += 3;
+      } else if (gf === ga) {
+        bucket.draws++;
+        bucket.points += 1;
+      } else bucket.losses++;
     });
 
-    const enrich = s => ({
+    const enrich = (s) => ({
       ...s,
       goalDifference: s.goalsFor - s.goalsAgainst,
       pointsPerMatch: s.played ? Number((s.points / s.played).toFixed(2)) : 0,
-      winRate: s.played ? Number(((s.wins / s.played) * 100).toFixed(2)) : 0
+      winRate: s.played ? Number(((s.wins / s.played) * 100).toFixed(2)) : 0,
     });
 
     return res.json({
       club: { id: club._id, name: club.name },
       home: enrich(home),
-      away: enrich(away)
+      away: enrich(away),
     });
-
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Error home/away pro" });
   }
 };
-
 // 📌 KPI DASHBOARD SUMMARY POR CLUB (ahora también soporta filtros)
 exports.getClubSummary = async (req, res) => {
   try {
@@ -875,24 +963,45 @@ exports.getClubSummary = async (req, res) => {
     if (!club) return res.status(404).json({ message: "Club no encontrado" });
 
     const filter = buildMatchFilter({ clubId, season, from, to });
+
+    if (filter.__invalidSeason) {
+      return res.status(400).json({ message: "Season inválida" });
+    }
+
     if (filter.__invalidDate) {
       return res.status(400).json({ message: `Fecha inválida en '${filter.field}'` });
     }
 
     const matches = await Match.find(filter).sort({ date: 1 });
 
-    let played = 0, wins = 0, draws = 0, losses = 0;
-    let goalsFor = 0, goalsAgainst = 0, points = 0;
+    let played = 0,
+      wins = 0,
+      draws = 0,
+      losses = 0;
+    let goalsFor = 0,
+      goalsAgainst = 0,
+      points = 0;
 
     const init = () => ({
-      played: 0, wins: 0, draws: 0, losses: 0,
-      goalsFor: 0, goalsAgainst: 0, points: 0
+      played: 0,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      points: 0,
     });
     const home = init();
     const away = init();
 
-    let winStreak = 0, drawStreak = 0, lossStreak = 0, unbeatenStreak = 0;
-    let maxWins = 0, maxDraws = 0, maxLosses = 0, maxUnbeaten = 0;
+    let winStreak = 0,
+      drawStreak = 0,
+      lossStreak = 0,
+      unbeatenStreak = 0;
+    let maxWins = 0,
+      maxDraws = 0,
+      maxLosses = 0,
+      maxUnbeaten = 0;
 
     const seasons = {};
 
@@ -905,32 +1014,69 @@ exports.getClubSummary = async (req, res) => {
       goalsFor += gf;
       goalsAgainst += ga;
 
-      if (gf > ga) { wins++; points += 3; }
-      else if (gf === ga) { draws++; points += 1; }
-      else { losses++; }
+      if (gf > ga) {
+        wins++;
+        points += 3;
+      } else if (gf === ga) {
+        draws++;
+        points += 1;
+      } else {
+        losses++;
+      }
 
       const bucket = isHome ? home : away;
       bucket.played++;
       bucket.goalsFor += gf;
       bucket.goalsAgainst += ga;
-      if (gf > ga) { bucket.wins++; bucket.points += 3; }
-      else if (gf === ga) { bucket.draws++; bucket.points += 1; }
-      else { bucket.losses++; }
+      if (gf > ga) {
+        bucket.wins++;
+        bucket.points += 3;
+      } else if (gf === ga) {
+        bucket.draws++;
+        bucket.points += 1;
+      } else {
+        bucket.losses++;
+      }
 
-      if (gf > ga) { winStreak++; drawStreak = 0; lossStreak = 0; unbeatenStreak++; }
-      else if (gf === ga) { drawStreak++; winStreak = 0; lossStreak = 0; unbeatenStreak++; }
-      else { lossStreak++; winStreak = 0; drawStreak = 0; unbeatenStreak = 0; }
+      if (gf > ga) {
+        winStreak++;
+        drawStreak = 0;
+        lossStreak = 0;
+        unbeatenStreak++;
+      } else if (gf === ga) {
+        drawStreak++;
+        winStreak = 0;
+        lossStreak = 0;
+        unbeatenStreak++;
+      } else {
+        lossStreak++;
+        winStreak = 0;
+        drawStreak = 0;
+        unbeatenStreak = 0;
+      }
 
       maxWins = Math.max(maxWins, winStreak);
       maxDraws = Math.max(maxDraws, drawStreak);
       maxLosses = Math.max(maxLosses, lossStreak);
       maxUnbeaten = Math.max(maxUnbeaten, unbeatenStreak);
 
-      const year = new Date(m.date).getFullYear();
-      if (!seasons[year]) seasons[year] = { season: year, played: 0, points: 0, goalsFor: 0, goalsAgainst: 0 };
+      const year = getMatchSeason(m);
+      if (!year) return;
+
+      if (!seasons[year]) {
+        seasons[year] = {
+          season: year,
+          played: 0,
+          points: 0,
+          goalsFor: 0,
+          goalsAgainst: 0,
+        };
+      }
+
       seasons[year].played++;
       seasons[year].goalsFor += gf;
       seasons[year].goalsAgainst += ga;
+
       if (gf > ga) seasons[year].points += 3;
       else if (gf === ga) seasons[year].points += 1;
     });
@@ -941,11 +1087,16 @@ exports.getClubSummary = async (req, res) => {
       ...s,
       goalDifference: s.goalsFor - s.goalsAgainst,
       pointsPerMatch: s.played ? Number((s.points / s.played).toFixed(2)) : 0,
-      winRate: s.played ? Number(((s.wins / s.played) * 100).toFixed(2)) : 0
+      winRate: s.played ? Number(((s.wins / s.played) * 100).toFixed(2)) : 0,
     });
 
-    const seasonList = Object.values(seasons).map((s) => ({ ...s, goalDifference: s.goalsFor - s.goalsAgainst }));
-    let bestSeason = null, worstSeason = null;
+    const seasonList = Object.values(seasons).map((s) => ({
+      ...s,
+      goalDifference: s.goalsFor - s.goalsAgainst,
+    }));
+
+    let bestSeason = null;
+    let worstSeason = null;
 
     if (seasonList.length > 0) {
       seasonList.sort((a, b) => {
@@ -953,6 +1104,7 @@ exports.getClubSummary = async (req, res) => {
         if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
         return b.goalsFor - a.goalsFor;
       });
+
       bestSeason = seasonList[0];
       worstSeason = seasonList[seasonList.length - 1];
     }
@@ -960,28 +1112,31 @@ exports.getClubSummary = async (req, res) => {
     return res.status(200).json({
       club: { id: club._id, name: club.name },
       overall: {
-        played, wins, draws, losses,
-        goalsFor, goalsAgainst,
+        played,
+        wins,
+        draws,
+        losses,
+        goalsFor,
+        goalsAgainst,
         goalDifference,
         points,
-        winRate: played ? Number(((wins / played) * 100).toFixed(2)) : 0
+        winRate: played ? Number(((wins / played) * 100).toFixed(2)) : 0,
       },
       averages: {
         goalsForPerMatch: played ? Number((goalsFor / played).toFixed(2)) : 0,
         goalsAgainstPerMatch: played ? Number((goalsAgainst / played).toFixed(2)) : 0,
-        pointsPerMatch: played ? Number((points / played).toFixed(2)) : 0
+        pointsPerMatch: played ? Number((points / played).toFixed(2)) : 0,
       },
       home: enrichHA(home),
       away: enrichHA(away),
       streaks: { maxWins, maxDraws, maxLosses, maxUnbeaten },
-      seasons: { bestSeason, worstSeason }
+      seasons: { bestSeason, worstSeason },
     });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Error al obtener summary del club" });
   }
 };
-
 /* =====================================================
    RIVALES
    GET /stats/club/:clubId/rivals?season=... | from/to&limit=5
@@ -1146,10 +1301,12 @@ exports.getLeagueTrends = async (req, res) => {
 
     const clubs = await Club.find();
     const nameMap = {};
-    clubs.forEach((c) => { nameMap[c._id.toString()] = c.name; });
+    clubs.forEach((c) => {
+      nameMap[c._id.toString()] = c.name;
+    });
 
     const matches = await Match.find({
-      season: { $gte: from, $lte: to }
+      season: { $gte: from, $lte: to },
     }).sort({ date: 1 });
 
     const seasons = {};
@@ -1159,23 +1316,34 @@ exports.getLeagueTrends = async (req, res) => {
         seasons[year].table[clubId] = {
           clubId,
           clubName: nameMap[clubId] || "Desconocido",
-          played: 0, wins: 0, draws: 0, losses: 0,
-          goalsFor: 0, goalsAgainst: 0, points: 0
+          played: 0,
+          wins: 0,
+          draws: 0,
+          losses: 0,
+          goalsFor: 0,
+          goalsAgainst: 0,
+          points: 0,
         };
       }
       return seasons[year].table[clubId];
     };
 
     matches.forEach((m) => {
-      const year = new Date(m.date).getFullYear();
-      if (year < from || year > to) return;
+      const year = getMatchSeason(m);
+      if (!year || year < from || year > to) return;
 
       if (!seasons[year]) {
-        seasons[year] = { season: year, matches: 0, totalGoals: 0, avgGoalsPerMatch: 0, table: {} };
+        seasons[year] = {
+          season: year,
+          matches: 0,
+          totalGoals: 0,
+          avgGoalsPerMatch: 0,
+          table: {},
+        };
       }
 
       seasons[year].matches++;
-      seasons[year].totalGoals += (m.scoreHome + m.scoreAway);
+      seasons[year].totalGoals += m.scoreHome + m.scoreAway;
 
       const homeId = toIdStr(m.homeClub);
       const awayId = toIdStr(m.awayClub);
@@ -1183,19 +1351,35 @@ exports.getLeagueTrends = async (req, res) => {
       const home = ensureClubStats(year, homeId);
       const away = ensureClubStats(year, awayId);
 
-      home.played++; away.played++;
-      home.goalsFor += m.scoreHome; home.goalsAgainst += m.scoreAway;
-      away.goalsFor += m.scoreAway; away.goalsAgainst += m.scoreHome;
+      home.played++;
+      away.played++;
+      home.goalsFor += m.scoreHome;
+      home.goalsAgainst += m.scoreAway;
+      away.goalsFor += m.scoreAway;
+      away.goalsAgainst += m.scoreHome;
 
-      if (m.scoreHome > m.scoreAway) { home.wins++; home.points += 3; away.losses++; }
-      else if (m.scoreHome < m.scoreAway) { away.wins++; away.points += 3; home.losses++; }
-      else { home.draws++; home.points += 1; away.draws++; away.points += 1; }
+      if (m.scoreHome > m.scoreAway) {
+        home.wins++;
+        home.points += 3;
+        away.losses++;
+      } else if (m.scoreHome < m.scoreAway) {
+        away.wins++;
+        away.points += 3;
+        home.losses++;
+      } else {
+        home.draws++;
+        home.points += 1;
+        away.draws++;
+        away.points += 1;
+      }
     });
 
     const result = Object.values(seasons)
       .sort((a, b) => a.season - b.season)
       .map((s) => {
-        s.avgGoalsPerMatch = s.matches ? Number((s.totalGoals / s.matches).toFixed(2)) : 0;
+        s.avgGoalsPerMatch = s.matches
+          ? Number((s.totalGoals / s.matches).toFixed(2))
+          : 0;
 
         const ranking = Object.values(s.table)
           .map((t) => ({ ...t, goalDifference: t.goalsFor - t.goalsAgainst }))
@@ -1206,17 +1390,38 @@ exports.getLeagueTrends = async (req, res) => {
           });
 
         const champion = ranking[0] || null;
-        const bestAttack = [...ranking].sort((a, b) => b.goalsFor - a.goalsFor)[0] || null;
-        const bestDefense = [...ranking].sort((a, b) => a.goalsAgainst - b.goalsAgainst)[0] || null;
+        const bestAttack =
+          [...ranking].sort((a, b) => b.goalsFor - a.goalsFor)[0] || null;
+        const bestDefense =
+          [...ranking].sort((a, b) => a.goalsAgainst - b.goalsAgainst)[0] || null;
 
         return {
           season: s.season,
           matches: s.matches,
           totalGoals: s.totalGoals,
           avgGoalsPerMatch: s.avgGoalsPerMatch,
-          champion: champion ? { clubId: champion.clubId, clubName: champion.clubName, points: champion.points, goalDifference: champion.goalDifference } : null,
-          bestAttack: bestAttack ? { clubId: bestAttack.clubId, clubName: bestAttack.clubName, goalsFor: bestAttack.goalsFor } : null,
-          bestDefense: bestDefense ? { clubId: bestDefense.clubId, clubName: bestDefense.clubName, goalsAgainst: bestDefense.goalsAgainst } : null
+          champion: champion
+            ? {
+                clubId: champion.clubId,
+                clubName: champion.clubName,
+                points: champion.points,
+                goalDifference: champion.goalDifference,
+              }
+            : null,
+          bestAttack: bestAttack
+            ? {
+                clubId: bestAttack.clubId,
+                clubName: bestAttack.clubName,
+                goalsFor: bestAttack.goalsFor,
+              }
+            : null,
+          bestDefense: bestDefense
+            ? {
+                clubId: bestDefense.clubId,
+                clubName: bestDefense.clubName,
+                goalsAgainst: bestDefense.goalsAgainst,
+              }
+            : null,
         };
       });
 
@@ -1226,7 +1431,6 @@ exports.getLeagueTrends = async (req, res) => {
     return res.status(500).json({ message: "Error al obtener trends de liga" });
   }
 };
-
 // ⚡ POWER RANKING (ponderado)
 exports.getPowerRanking = async (req, res) => {
   try {
