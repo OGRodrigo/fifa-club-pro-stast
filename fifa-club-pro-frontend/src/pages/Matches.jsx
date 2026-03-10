@@ -2267,12 +2267,7 @@ function PlayerStatEditor({
           value={row.dribblesWon}
           onChange={(value) => onChange({ dribblesWon: value })}
         />
-        <FieldInput
-          label="Éxito regates %"
-          type="number"
-          value={row.dribbleSuccess}
-          onChange={(value) => onChange({ dribbleSuccess: value })}
-        />
+       
 
         <FieldInput
           label="Entradas"

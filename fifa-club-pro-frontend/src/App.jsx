@@ -10,6 +10,7 @@ import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import JoinRequests from "./pages/JoinRequests";
 import MemberStats from "./pages/MemberStats";
+import MemberDetail from "./pages/MemberDetail";
 import Clubs from "./pages/Clubs";
 import CreateClub from "./pages/CreateClub";
 import Matches from "./pages/Matches";
@@ -93,6 +94,15 @@ export default function App() {
           element={
             <Private>
               <MemberStats />
+            </Private>
+          }
+        />
+
+        <Route
+          path="/club/members-stats/:memberId"
+          element={
+            <Private>
+              <MemberDetail />
             </Private>
           }
         />
