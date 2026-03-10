@@ -14,22 +14,15 @@ const { requireClubRole } = require("../middlewares/authClubRole");
 
 /**
  * ======================
- * GET (no dependen de :id)
+ * GET (sin :id)
  * ======================
  */
-
-// Ping
 router.get("/ping", (req, res) => {
   return res.json({ ok: true, route: "/matches/ping" });
 });
 
-// Calendario
 router.get("/calendar", matchesController.getCalendar);
-
-// Head to Head
 router.get("/h2h/:clubA/:clubB", matchesController.getMatchesHeadToHead);
-
-// Lista partidos
 router.get("/", matchesController.getMatches);
 
 /**
@@ -37,8 +30,6 @@ router.get("/", matchesController.getMatches);
  * POST
  * ======================
  */
-
-// Crear partido seguro (admin/captain)
 router.post(
   "/clubs/:clubId",
   auth,
@@ -48,11 +39,9 @@ router.post(
 
 /**
  * ======================
- * PATCH PLAYER STATS
+ * PATCHS seguros
  * ======================
  */
-
-// Actualizar player stats seguro (admin/captain)
 router.patch(
   "/:id/clubs/:clubId/player-stats",
   auth,
@@ -60,19 +49,28 @@ router.patch(
   matchesController.updateMatchPlayerStats
 );
 
+router.patch(
+  "/:id/clubs/:clubId/team-stats",
+  auth,
+  requireClubRole(["admin", "captain"]),
+  matchesController.updateMatchTeamStats
+);
+
+router.patch(
+  "/:id/clubs/:clubId/lineups",
+  auth,
+  requireClubRole(["admin", "captain"]),
+  matchesController.updateMatchLineups
+);
+
 /**
  * ======================
  * Rutas por ID
  * ======================
  */
-
-// Partido FULL
 router.get("/:id/full", matchesController.getMatchByIdFull);
-
-// MVP partido
 router.get("/:id/mvp", matchesController.getMatchMVP);
 
-// Update seguro
 router.put(
   "/:id/clubs/:clubId",
   auth,
@@ -80,7 +78,6 @@ router.put(
   matchesController.updateMatch
 );
 
-// Delete seguro
 router.delete(
   "/:id/clubs/:clubId",
   auth,
@@ -88,7 +85,6 @@ router.delete(
   matchesController.deleteMatch
 );
 
-// Obtener partido simple
 router.get("/:id", matchesController.getMatchById);
 
 module.exports = router;
