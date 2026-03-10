@@ -7,18 +7,15 @@ import { useAuth } from "../auth/AuthContext";
  * =====================================================
  * MATCHES V2
  * -----------------------------------------------------
- * Gestión completa de partidos:
- * - crear partido
- * - listar partidos del club
- * - editar datos base
- * - editar team stats
- * - editar lineups
- * - editar player stats
- * - eliminar partido
+ * Regla funcional de esta versión:
+ * - datos base del partido: completos
+ * - teamStats: se pueden cargar de ambos clubes
+ * - lineups: solo del club que crea/edita
+ * - playerStats: solo del club que crea/edita
  *
- * Requiere:
- * - clubContext.clubId
- * - clubContext.role
+ * No se inventan:
+ * - lineup rival
+ * - stats individuales del rival
  * =====================================================
  */
 
@@ -161,6 +158,7 @@ const initialEditLineupsState = {
   open: false,
   saving: false,
   matchId: "",
+  mySide: "",
   lineups: {
     home: {
       formation: "",
@@ -177,7 +175,8 @@ const initialEditPlayerStatsState = {
   open: false,
   saving: false,
   matchId: "",
-  strictTotals: true,
+  mySide: "",
+  strictTotals: false,
   playerStats: [],
 };
 
@@ -218,6 +217,13 @@ function memberLabel(member) {
   return `${member.gamerTag || member.username || "Jugador"}${
     member.platform ? ` · ${member.platform}` : ""
   }`;
+}
+
+function sideOfMyClub(homeClubId, awayClubId, myClubId) {
+  if (!myClubId) return "";
+  if (String(homeClubId) === String(myClubId)) return "home";
+  if (String(awayClubId) === String(myClubId)) return "away";
+  return "";
 }
 
 /* =====================================================
@@ -290,16 +296,14 @@ export default function Matches() {
     }));
   }, [myMembers]);
 
-  const memberMap = useMemo(() => {
-    return memberOptions.reduce((acc, member) => {
-      acc[member.id] = member;
-      return acc;
-    }, {});
-  }, [memberOptions]);
-
   const myClubIsHome = createState.homeClub === myClubId;
   const myClubIsAway = createState.awayClub === myClubId;
-  const myClubSideId = myClubIsHome ? createState.homeClub : myClubIsAway ? createState.awayClub : "";
+  const myClubSideId = myClubIsHome
+    ? createState.homeClub
+    : myClubIsAway
+    ? createState.awayClub
+    : "";
+  const myCreateSide = myClubIsHome ? "home" : myClubIsAway ? "away" : "";
 
   /* =====================================================
    * Carga base: clubs + members del club activo
@@ -412,23 +416,23 @@ export default function Matches() {
         prev.playerStats.length > 0
           ? prev.playerStats.map((ps) => ({
               ...ps,
-              club: ps.club || myClubId,
+              club: myClubId,
             }))
           : [createEmptyPlayerStat(myClubId)],
     }));
   }, [myClubId]);
 
   useEffect(() => {
-    if (!myClubSideId) return;
+    if (!myClubId) return;
 
     setCreateState((prev) => ({
       ...prev,
       playerStats: prev.playerStats.map((ps) => ({
         ...ps,
-        club: myClubSideId,
+        club: myClubId,
       })),
     }));
-  }, [myClubSideId]);
+  }, [myClubSideId, myClubId]);
 
   /* =====================================================
    * Helpers de create
@@ -467,6 +471,13 @@ export default function Matches() {
       return;
     }
 
+    const playerStatsError = validatePlayerStatsRows(editPlayerStats.playerStats);
+if (playerStatsError) {
+  setEditPlayerStatsErr(playerStatsError);
+  setEditPlayerStatsOk("");
+  return;
+}
+
     try {
       setCreateSaving(true);
       setCreateErr("");
@@ -488,12 +499,21 @@ export default function Matches() {
         },
 
         lineups: {
-          home: normalizeLineupForPayload(createState.lineups.home),
-          away: normalizeLineupForPayload(createState.lineups.away),
+          home:
+            myCreateSide === "home"
+              ? normalizeLineupForPayload(createState.lineups.home)
+              : { formation: "", players: [] },
+          away:
+            myCreateSide === "away"
+              ? normalizeLineupForPayload(createState.lineups.away)
+              : { formation: "", players: [] },
         },
 
         playerStats: createState.playerStats.map((ps) =>
-          normalizePlayerStatForPayload(ps, ps.club || myClubSideId || myClubId)
+          normalizePlayerStatForPayload(
+            { ...ps, club: myClubId },
+            myClubId
+          )
         ),
 
         strictTotals: false,
@@ -618,17 +638,17 @@ export default function Matches() {
   }
 
   function updateEditTeamStats(side, field, value) {
-    setEditTeamStats((prev) => ({
-      ...prev,
-      teamStats: {
-        ...prev.teamStats,
-        [side]: {
-          ...prev.teamStats[side],
-          [field]: value,
-        },
-      },
-    }));
-  }
+  setEditTeamStats((prev) => ({
+    ...prev,
+    teamStats: {
+      ...prev.teamStats,
+      [side]: withCalculatedTeamPercents({
+        ...prev.teamStats[side],
+        [field]: value,
+      }),
+    },
+  }));
+}
 
   async function handleSaveTeamStats(e) {
     e.preventDefault();
@@ -668,10 +688,17 @@ export default function Matches() {
       const res = await api.get(`/matches/${matchId}/full`);
       const match = res.data;
 
+      const mySide = sideOfMyClub(
+        clubIdOf(match?.homeClub),
+        clubIdOf(match?.awayClub),
+        myClubId
+      );
+
       setEditLineups({
         open: true,
         saving: false,
         matchId,
+        mySide,
         lineups: {
           home: {
             formation: match?.lineups?.home?.formation || "",
@@ -803,49 +830,56 @@ export default function Matches() {
       const match = res.data;
 
       const playerStats = Array.isArray(match?.playerStats)
-        ? match.playerStats.map((ps) => ({
-            user: userIdOf(ps.user),
-            club: clubIdOf(ps.club),
-            position: ps.position || "",
-            rating: normalizeNumber(ps.rating),
-            minutesPlayed: normalizeNumber(ps.minutesPlayed, 90),
-            isMVP: Boolean(ps.isMVP),
+        ? match.playerStats
+            .filter((ps) => String(clubIdOf(ps.club)) === String(myClubId))
+            .map((ps) => ({
+              user: userIdOf(ps.user),
+              club: myClubId,
+              position: ps.position || "",
+              rating: normalizeNumber(ps.rating),
+              minutesPlayed: normalizeNumber(ps.minutesPlayed, 90),
+              isMVP: Boolean(ps.isMVP),
 
-            goals: normalizeNumber(ps.goals),
-            assists: normalizeNumber(ps.assists),
+              goals: normalizeNumber(ps.goals),
+              assists: normalizeNumber(ps.assists),
 
-            shots: normalizeNumber(ps.shots),
-            shotsOnTarget: normalizeNumber(ps.shotsOnTarget),
-            shotAccuracy: normalizeNumber(ps.shotAccuracy),
+              shots: normalizeNumber(ps.shots),
+              shotsOnTarget: normalizeNumber(ps.shotsOnTarget),
+              shotAccuracy: normalizeNumber(ps.shotAccuracy),
 
-            passes: normalizeNumber(ps.passes),
-            passesCompleted: normalizeNumber(ps.passesCompleted),
-            passAccuracy: normalizeNumber(ps.passAccuracy),
-            keyPasses: normalizeNumber(ps.keyPasses),
+              passes: normalizeNumber(ps.passes),
+              passesCompleted: normalizeNumber(ps.passesCompleted),
+              passAccuracy: normalizeNumber(ps.passAccuracy),
+              keyPasses: normalizeNumber(ps.keyPasses),
 
-            dribbles: normalizeNumber(ps.dribbles),
-            dribblesWon: normalizeNumber(ps.dribblesWon),
-            dribbleSuccess: normalizeNumber(ps.dribbleSuccess),
+              dribbles: normalizeNumber(ps.dribbles),
+              dribblesWon: normalizeNumber(ps.dribblesWon),
+              dribbleSuccess: normalizeNumber(ps.dribbleSuccess),
 
-            tackles: normalizeNumber(ps.tackles),
-            tacklesWon: normalizeNumber(ps.tacklesWon),
-            interceptions: normalizeNumber(ps.interceptions),
-            recoveries: normalizeNumber(ps.recoveries),
-            clearances: normalizeNumber(ps.clearances),
-            blocks: normalizeNumber(ps.blocks),
-            saves: normalizeNumber(ps.saves),
+              tackles: normalizeNumber(ps.tackles),
+              tacklesWon: normalizeNumber(ps.tacklesWon),
+              interceptions: normalizeNumber(ps.interceptions),
+              recoveries: normalizeNumber(ps.recoveries),
+              clearances: normalizeNumber(ps.clearances),
+              blocks: normalizeNumber(ps.blocks),
+              saves: normalizeNumber(ps.saves),
 
-            fouls: normalizeNumber(ps.fouls),
-            yellowCards: normalizeNumber(ps.yellowCards),
-            redCards: normalizeNumber(ps.redCards),
-          }))
+              fouls: normalizeNumber(ps.fouls),
+              yellowCards: normalizeNumber(ps.yellowCards),
+              redCards: normalizeNumber(ps.redCards),
+            }))
         : [];
 
       setEditPlayerStats({
         open: true,
         saving: false,
         matchId,
-        strictTotals: true,
+        mySide: sideOfMyClub(
+          clubIdOf(match?.homeClub),
+          clubIdOf(match?.awayClub),
+          myClubId
+        ),
+        strictTotals: false,
         playerStats,
       });
     } catch (error) {
@@ -876,13 +910,13 @@ export default function Matches() {
   }
 
   function updatePlayerStatRow(index, patch) {
-    setEditPlayerStats((prev) => ({
-      ...prev,
-      playerStats: prev.playerStats.map((ps, i) =>
-        i === index ? { ...ps, ...patch } : ps
-      ),
-    }));
-  }
+  setEditPlayerStats((prev) => ({
+    ...prev,
+    playerStats: prev.playerStats.map((ps, i) =>
+      i === index ? withCalculatedPlayerPercents({ ...ps, ...patch }) : ps
+    ),
+  }));
+}
 
   async function handleSavePlayerStats(e) {
     e.preventDefault();
@@ -893,9 +927,12 @@ export default function Matches() {
       setEditPlayerStatsOk("");
 
       await api.patch(`/matches/${editPlayerStats.matchId}/clubs/${myClubId}/player-stats`, {
-        strictTotals: Boolean(editPlayerStats.strictTotals),
+        strictTotals: false,
         playerStats: editPlayerStats.playerStats.map((ps) =>
-          normalizePlayerStatForPayload(ps, ps.club || myClubId)
+          normalizePlayerStatForPayload(
+            { ...ps, club: myClubId },
+            myClubId
+          )
         ),
       });
 
@@ -956,7 +993,7 @@ export default function Matches() {
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <h1 className="text-2xl font-bold">Matches v2</h1>
         <p className="mt-2 text-sm text-slate-300">
-          Gestión completa del partido: datos base, team stats, alineaciones y player stats.
+          Datos base completos, teamStats comparativas, lineup y playerStats solo de tu club.
         </p>
 
         {baseErr ? (
@@ -1082,7 +1119,7 @@ export default function Matches() {
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
             <h3 className="font-semibold">2. Team stats</h3>
             <p className="mt-1 text-sm text-slate-400">
-              Puedes completarlas ahora o después desde editar.
+              Aquí sí puedes cargar stats de ambos clubes si la captura las muestra.
             </p>
 
             <div className="mt-4 grid gap-6 lg:grid-cols-2">
@@ -1090,154 +1127,109 @@ export default function Matches() {
                 title="Home"
                 stats={createState.teamStats.home}
                 onChange={(field, value) =>
-                  setCreateState((prev) => ({
-                    ...prev,
-                    teamStats: {
-                      ...prev.teamStats,
-                      home: {
-                        ...prev.teamStats.home,
-                        [field]: value,
-                      },
-                    },
-                  }))
-                }
+  setCreateState((prev) => ({
+    ...prev,
+    teamStats: {
+      ...prev.teamStats,
+      home: withCalculatedTeamPercents({
+        ...prev.teamStats.home,
+        [field]: value,
+      }),
+    },
+  }))
+}
               />
 
               <TeamStatsEditor
                 title="Away"
                 stats={createState.teamStats.away}
                 onChange={(field, value) =>
-                  setCreateState((prev) => ({
-                    ...prev,
-                    teamStats: {
-                      ...prev.teamStats,
-                      away: {
-                        ...prev.teamStats.away,
-                        [field]: value,
-                      },
-                    },
-                  }))
-                }
+  setCreateState((prev) => ({
+    ...prev,
+    teamStats: {
+      ...prev.teamStats,
+      away: withCalculatedTeamPercents({
+        ...prev.teamStats.away,
+        [field]: value,
+      }),
+    },
+  }))
+}
               />
             </div>
           </div>
 
           {/* Lineups */}
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <h3 className="font-semibold">3. Lineups</h3>
+            <h3 className="font-semibold">3. Lineup de mi club</h3>
 
-            <div className="mt-4 grid gap-6 lg:grid-cols-2">
-              <LineupEditor
-                title="Home lineup"
-                lineup={createState.lineups.home}
-                memberOptions={memberOptions}
-                onFormationChange={(value) =>
-                  setCreateState((prev) => ({
-                    ...prev,
-                    lineups: {
-                      ...prev.lineups,
-                      home: {
-                        ...prev.lineups.home,
-                        formation: value,
+            <div className="mt-4">
+              {!myCreateSide ? (
+                <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-400">
+                  Selecciona primero si tu club será home o away para cargar la alineación.
+                </div>
+              ) : (
+                <LineupEditor
+                  title={`Lineup de mi club (${myCreateSide === "home" ? "home" : "away"})`}
+                  lineup={createState.lineups[myCreateSide]}
+                  memberOptions={memberOptions}
+                  onFormationChange={(value) =>
+                    setCreateState((prev) => ({
+                      ...prev,
+                      lineups: {
+                        ...prev.lineups,
+                        [myCreateSide]: {
+                          ...prev.lineups[myCreateSide],
+                          formation: value,
+                        },
                       },
-                    },
-                  }))
-                }
-                onAdd={() =>
-                  setCreateState((prev) => ({
-                    ...prev,
-                    lineups: {
-                      ...prev.lineups,
-                      home: {
-                        ...prev.lineups.home,
-                        players: [...prev.lineups.home.players, createEmptyLineupPlayer()],
+                    }))
+                  }
+                  onAdd={() =>
+                    setCreateState((prev) => ({
+                      ...prev,
+                      lineups: {
+                        ...prev.lineups,
+                        [myCreateSide]: {
+                          ...prev.lineups[myCreateSide],
+                          players: [
+                            ...prev.lineups[myCreateSide].players,
+                            createEmptyLineupPlayer(),
+                          ],
+                        },
                       },
-                    },
-                  }))
-                }
-                onRemove={(index) =>
-                  setCreateState((prev) => ({
-                    ...prev,
-                    lineups: {
-                      ...prev.lineups,
-                      home: {
-                        ...prev.lineups.home,
-                        players: prev.lineups.home.players.filter((_, i) => i !== index),
+                    }))
+                  }
+                  onRemove={(index) =>
+                    setCreateState((prev) => ({
+                      ...prev,
+                      lineups: {
+                        ...prev.lineups,
+                        [myCreateSide]: {
+                          ...prev.lineups[myCreateSide],
+                          players: prev.lineups[myCreateSide].players.filter(
+                            (_, i) => i !== index
+                          ),
+                        },
                       },
-                    },
-                  }))
-                }
-                onPlayerChange={(index, patch) =>
-                  setCreateState((prev) => ({
-                    ...prev,
-                    lineups: {
-                      ...prev.lineups,
-                      home: {
-                        ...prev.lineups.home,
-                        players: prev.lineups.home.players.map((p, i) =>
-                          i === index ? { ...p, ...patch } : p
-                        ),
+                    }))
+                  }
+                  onPlayerChange={(index, patch) =>
+                    setCreateState((prev) => ({
+                      ...prev,
+                      lineups: {
+                        ...prev.lineups,
+                        [myCreateSide]: {
+                          ...prev.lineups[myCreateSide],
+                          players: prev.lineups[myCreateSide].players.map((p, i) =>
+                            i === index ? { ...p, ...patch } : p
+                          ),
+                        },
                       },
-                    },
-                  }))
-                }
-              />
-
-              <LineupEditor
-                title="Away lineup"
-                lineup={createState.lineups.away}
-                memberOptions={memberOptions}
-                onFormationChange={(value) =>
-                  setCreateState((prev) => ({
-                    ...prev,
-                    lineups: {
-                      ...prev.lineups,
-                      away: {
-                        ...prev.lineups.away,
-                        formation: value,
-                      },
-                    },
-                  }))
-                }
-                onAdd={() =>
-                  setCreateState((prev) => ({
-                    ...prev,
-                    lineups: {
-                      ...prev.lineups,
-                      away: {
-                        ...prev.lineups.away,
-                        players: [...prev.lineups.away.players, createEmptyLineupPlayer()],
-                      },
-                    },
-                  }))
-                }
-                onRemove={(index) =>
-                  setCreateState((prev) => ({
-                    ...prev,
-                    lineups: {
-                      ...prev.lineups,
-                      away: {
-                        ...prev.lineups.away,
-                        players: prev.lineups.away.players.filter((_, i) => i !== index),
-                      },
-                    },
-                  }))
-                }
-                onPlayerChange={(index, patch) =>
-                  setCreateState((prev) => ({
-                    ...prev,
-                    lineups: {
-                      ...prev.lineups,
-                      away: {
-                        ...prev.lineups.away,
-                        players: prev.lineups.away.players.map((p, i) =>
-                          i === index ? { ...p, ...patch } : p
-                        ),
-                      },
-                    },
-                  }))
-                }
-              />
+                    }))
+                  }
+                />
+              )}
             </div>
           </div>
 
@@ -1245,9 +1237,9 @@ export default function Matches() {
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="font-semibold">4. Player stats</h3>
+                <h3 className="font-semibold">4. Player stats de mi club</h3>
                 <p className="mt-1 text-sm text-slate-400">
-                  Puedes cargar stats mínimas o completas.
+                  Aquí solo se cargan jugadores de tu club.
                 </p>
               </div>
 
@@ -1256,7 +1248,7 @@ export default function Matches() {
                 onClick={() =>
                   setCreateState((prev) => ({
                     ...prev,
-                    playerStats: [...prev.playerStats, createEmptyPlayerStat(myClubSideId || myClubId)],
+                    playerStats: [...prev.playerStats, createEmptyPlayerStat(myClubId)],
                   }))
                 }
                 className="rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/10"
@@ -1273,15 +1265,16 @@ export default function Matches() {
                   title={`Jugador ${index + 1}`}
                   row={ps}
                   memberOptions={memberOptions}
-                  clubOptions={clubOptions}
                   onChange={(patch) =>
-                    setCreateState((prev) => ({
-                      ...prev,
-                      playerStats: prev.playerStats.map((item, i) =>
-                        i === index ? { ...item, ...patch } : item
-                      ),
-                    }))
-                  }
+  setCreateState((prev) => ({
+    ...prev,
+    playerStats: prev.playerStats.map((item, i) =>
+      i === index
+        ? withCalculatedPlayerPercents({ ...item, ...patch, club: myClubId })
+        : item
+    ),
+  }))
+}
                   onRemove={() =>
                     setCreateState((prev) => ({
                       ...prev,
@@ -1411,7 +1404,7 @@ export default function Matches() {
                                 onClick={() => openEditLineups(match._id)}
                                 className="rounded-lg border border-fuchsia-500/30 px-3 py-1.5 text-fuchsia-200 hover:bg-fuchsia-500/10"
                               >
-                                Lineups
+                                Lineup
                               </button>
 
                               <button
@@ -1444,7 +1437,7 @@ export default function Matches() {
         </div>
       </div>
 
-      {/* Modal/Panel edit base */}
+      {/* Panel edit base */}
       {editBase.open ? (
         <Panel title="Editar datos base" onClose={closeEditBase}>
           {editBaseErr ? <ErrorBox text={editBaseErr} /> : null}
@@ -1576,31 +1569,29 @@ export default function Matches() {
 
       {/* Panel lineups */}
       {editLineups.open ? (
-        <Panel title="Editar lineups" onClose={closeEditLineups}>
+        <Panel title="Editar lineup de mi club" onClose={closeEditLineups}>
           {editLineupsErr ? <ErrorBox text={editLineupsErr} /> : null}
           {editLineupsOk ? <SuccessBox text={editLineupsOk} /> : null}
 
           <form onSubmit={handleSaveLineups} className="space-y-6">
-            <div className="grid gap-6 lg:grid-cols-2">
-              <LineupEditor
-                title="Home lineup"
-                lineup={editLineups.lineups.home}
-                memberOptions={memberOptions}
-                onFormationChange={(value) => updateLineupFormation("home", value)}
-                onAdd={() => addLineupPlayer("home")}
-                onRemove={(index) => removeLineupPlayer("home", index)}
-                onPlayerChange={(index, patch) => updateLineupPlayer("home", index, patch)}
-              />
-
-              <LineupEditor
-                title="Away lineup"
-                lineup={editLineups.lineups.away}
-                memberOptions={memberOptions}
-                onFormationChange={(value) => updateLineupFormation("away", value)}
-                onAdd={() => addLineupPlayer("away")}
-                onRemove={(index) => removeLineupPlayer("away", index)}
-                onPlayerChange={(index, patch) => updateLineupPlayer("away", index, patch)}
-              />
+            <div>
+              {!editLineups.mySide ? (
+                <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-400">
+                  No se pudo determinar si tu club es home o away en este partido.
+                </div>
+              ) : (
+                <LineupEditor
+                  title={`Lineup de mi club (${editLineups.mySide === "home" ? "home" : "away"})`}
+                  lineup={editLineups.lineups[editLineups.mySide]}
+                  memberOptions={memberOptions}
+                  onFormationChange={(value) => updateLineupFormation(editLineups.mySide, value)}
+                  onAdd={() => addLineupPlayer(editLineups.mySide)}
+                  onRemove={(index) => removeLineupPlayer(editLineups.mySide, index)}
+                  onPlayerChange={(index, patch) =>
+                    updateLineupPlayer(editLineups.mySide, index, patch)
+                  }
+                />
+              )}
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -1609,7 +1600,7 @@ export default function Matches() {
                 disabled={editLineups.saving}
                 className="rounded-xl bg-emerald-600 px-5 py-2.5 font-medium hover:bg-emerald-500 disabled:opacity-50"
               >
-                {editLineups.saving ? "Guardando..." : "Guardar lineups"}
+                {editLineups.saving ? "Guardando..." : "Guardar lineup"}
               </button>
 
               <button
@@ -1626,24 +1617,14 @@ export default function Matches() {
 
       {/* Panel player stats */}
       {editPlayerStats.open ? (
-        <Panel title="Editar player stats" onClose={closeEditPlayerStats}>
+        <Panel title="Editar player stats de mi club" onClose={closeEditPlayerStats}>
           {editPlayerStatsErr ? <ErrorBox text={editPlayerStatsErr} /> : null}
           {editPlayerStatsOk ? <SuccessBox text={editPlayerStatsOk} /> : null}
 
           <form onSubmit={handleSavePlayerStats} className="space-y-5">
-            <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-3 text-sm">
-              <input
-                type="checkbox"
-                checked={editPlayerStats.strictTotals}
-                onChange={(e) =>
-                  setEditPlayerStats((prev) => ({
-                    ...prev,
-                    strictTotals: e.target.checked,
-                  }))
-                }
-              />
-              <span>Validar que la suma de goles coincida con el marcador</span>
-            </label>
+            <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-400">
+              Las estadísticas individuales se guardan solo para tu club. No se valida el total global del rival.
+            </div>
 
             <div className="flex justify-end">
               <button
@@ -1658,7 +1639,7 @@ export default function Matches() {
             <div className="space-y-4">
               {editPlayerStats.playerStats.length === 0 ? (
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
-                  Este partido no tiene playerStats aún. Puedes agregarlos.
+                  Este partido no tiene playerStats de tu club aún. Puedes agregarlos.
                 </div>
               ) : null}
 
@@ -1668,7 +1649,6 @@ export default function Matches() {
                   title={`Jugador ${index + 1}`}
                   row={ps}
                   memberOptions={memberOptions}
-                  clubOptions={clubOptions}
                   onChange={(patch) => updatePlayerStatRow(index, patch)}
                   onRemove={() => removePlayerStatRow(index)}
                   removable={true}
@@ -1704,37 +1684,39 @@ export default function Matches() {
  * Normalizadores de payload
  * ===================================================== */
 function normalizeTeamStatsForPayload(stats) {
+  const calculated = withCalculatedTeamPercents(stats);
+
   return {
-    possession: normalizeNumber(stats.possession),
-    shots: normalizeNumber(stats.shots),
-    shotsOnTarget: normalizeNumber(stats.shotsOnTarget),
-    shotAccuracy: normalizeNumber(stats.shotAccuracy),
-    expectedGoals: normalizeNumber(stats.expectedGoals),
+    possession: normalizeNumber(calculated.possession),
+    shots: normalizeNumber(calculated.shots),
+    shotsOnTarget: normalizeNumber(calculated.shotsOnTarget),
+    shotAccuracy: normalizeNumber(calculated.shotAccuracy),
+    expectedGoals: normalizeNumber(calculated.expectedGoals),
 
-    passes: normalizeNumber(stats.passes),
-    passesCompleted: normalizeNumber(stats.passesCompleted),
-    passAccuracy: normalizeNumber(stats.passAccuracy),
+    passes: normalizeNumber(calculated.passes),
+    passesCompleted: normalizeNumber(calculated.passesCompleted),
+    passAccuracy: normalizeNumber(calculated.passAccuracy),
 
-    dribbleSuccess: normalizeNumber(stats.dribbleSuccess),
+    dribbleSuccess: normalizeNumber(calculated.dribbleSuccess),
 
-    tackles: normalizeNumber(stats.tackles),
-    tacklesWon: normalizeNumber(stats.tacklesWon),
-    tackleSuccess: normalizeNumber(stats.tackleSuccess),
+    tackles: normalizeNumber(calculated.tackles),
+    tacklesWon: normalizeNumber(calculated.tacklesWon),
+    tackleSuccess: normalizeNumber(calculated.tackleSuccess),
 
-    recoveries: normalizeNumber(stats.recoveries),
-    interceptions: normalizeNumber(stats.interceptions),
-    clearances: normalizeNumber(stats.clearances),
-    blocks: normalizeNumber(stats.blocks),
-    saves: normalizeNumber(stats.saves),
+    recoveries: normalizeNumber(calculated.recoveries),
+    interceptions: normalizeNumber(calculated.interceptions),
+    clearances: normalizeNumber(calculated.clearances),
+    blocks: normalizeNumber(calculated.blocks),
+    saves: normalizeNumber(calculated.saves),
 
-    fouls: normalizeNumber(stats.fouls),
-    offsides: normalizeNumber(stats.offsides),
-    corners: normalizeNumber(stats.corners),
-    freeKicks: normalizeNumber(stats.freeKicks),
-    penalties: normalizeNumber(stats.penalties),
+    fouls: normalizeNumber(calculated.fouls),
+    offsides: normalizeNumber(calculated.offsides),
+    corners: normalizeNumber(calculated.corners),
+    freeKicks: normalizeNumber(calculated.freeKicks),
+    penalties: normalizeNumber(calculated.penalties),
 
-    yellowCards: normalizeNumber(stats.yellowCards),
-    redCards: normalizeNumber(stats.redCards),
+    yellowCards: normalizeNumber(calculated.yellowCards),
+    redCards: normalizeNumber(calculated.redCards),
   };
 }
 
@@ -1758,42 +1740,149 @@ function normalizeLineupForPayload(lineup) {
 }
 
 function normalizePlayerStatForPayload(ps, fallbackClubId = "") {
+  const calculated = withCalculatedPlayerPercents(ps);
+
   return {
-    user: ps.user,
-    club: ps.club || fallbackClubId,
+    user: calculated.user,
+    club: calculated.club || fallbackClubId,
 
-    position: String(ps.position || "").trim().toUpperCase(),
-    rating: normalizeNumber(ps.rating),
-    minutesPlayed: normalizeNumber(ps.minutesPlayed, 90),
-    isMVP: Boolean(ps.isMVP),
+    position: String(calculated.position || "").trim().toUpperCase(),
+    rating: normalizeNumber(calculated.rating),
+    minutesPlayed: normalizeNumber(calculated.minutesPlayed, 90),
+    isMVP: Boolean(calculated.isMVP),
 
-    goals: normalizeNumber(ps.goals),
-    assists: normalizeNumber(ps.assists),
+    goals: normalizeNumber(calculated.goals),
+    assists: normalizeNumber(calculated.assists),
 
-    shots: normalizeNumber(ps.shots),
-    shotsOnTarget: normalizeNumber(ps.shotsOnTarget),
-    shotAccuracy: normalizeNumber(ps.shotAccuracy),
+    shots: normalizeNumber(calculated.shots),
+    shotsOnTarget: normalizeNumber(calculated.shotsOnTarget),
+    shotAccuracy: normalizeNumber(calculated.shotAccuracy),
 
-    passes: normalizeNumber(ps.passes),
-    passesCompleted: normalizeNumber(ps.passesCompleted),
-    passAccuracy: normalizeNumber(ps.passAccuracy),
-    keyPasses: normalizeNumber(ps.keyPasses),
+    passes: normalizeNumber(calculated.passes),
+    passesCompleted: normalizeNumber(calculated.passesCompleted),
+    passAccuracy: normalizeNumber(calculated.passAccuracy),
+    keyPasses: normalizeNumber(calculated.keyPasses),
 
-    dribbles: normalizeNumber(ps.dribbles),
-    dribblesWon: normalizeNumber(ps.dribblesWon),
-    dribbleSuccess: normalizeNumber(ps.dribbleSuccess),
+    dribbles: normalizeNumber(calculated.dribbles),
+    dribblesWon: normalizeNumber(calculated.dribblesWon),
+    dribbleSuccess: normalizeNumber(calculated.dribbleSuccess),
 
-    tackles: normalizeNumber(ps.tackles),
-    tacklesWon: normalizeNumber(ps.tacklesWon),
-    interceptions: normalizeNumber(ps.interceptions),
-    recoveries: normalizeNumber(ps.recoveries),
-    clearances: normalizeNumber(ps.clearances),
-    blocks: normalizeNumber(ps.blocks),
-    saves: normalizeNumber(ps.saves),
+    tackles: normalizeNumber(calculated.tackles),
+    tacklesWon: normalizeNumber(calculated.tacklesWon),
+    interceptions: normalizeNumber(calculated.interceptions),
+    recoveries: normalizeNumber(calculated.recoveries),
+    clearances: normalizeNumber(calculated.clearances),
+    blocks: normalizeNumber(calculated.blocks),
+    saves: normalizeNumber(calculated.saves),
 
-    fouls: normalizeNumber(ps.fouls),
-    yellowCards: normalizeNumber(ps.yellowCards),
-    redCards: normalizeNumber(ps.redCards),
+    fouls: normalizeNumber(calculated.fouls),
+    yellowCards: normalizeNumber(calculated.yellowCards),
+    redCards: normalizeNumber(calculated.redCards),
+  };
+}
+
+function validateSinglePlayerStatRow(row, index) {
+  const rowNumber = index + 1;
+
+  if (!row.user) {
+    return `Jugador ${rowNumber}: debes seleccionar un jugador.`;
+  }
+
+  const shots = normalizeNumber(row.shots);
+  const shotsOnTarget = normalizeNumber(row.shotsOnTarget);
+  const passes = normalizeNumber(row.passes);
+  const passesCompleted = normalizeNumber(row.passesCompleted);
+  const dribbles = normalizeNumber(row.dribbles);
+  const dribblesWon = normalizeNumber(row.dribblesWon);
+  const tackles = normalizeNumber(row.tackles);
+  const tacklesWon = normalizeNumber(row.tacklesWon);
+
+  if (shotsOnTarget > shots) {
+    return `Jugador ${rowNumber}: tiros al arco no puede exceder tiros.`;
+  }
+
+  if (passesCompleted > passes) {
+    return `Jugador ${rowNumber}: pases completados no puede exceder pases.`;
+  }
+
+  if (dribblesWon > dribbles) {
+    return `Jugador ${rowNumber}: regates ganados no puede exceder regates.`;
+  }
+
+  if (tacklesWon > tackles) {
+    return `Jugador ${rowNumber}: entradas ganadas no puede exceder entradas.`;
+  }
+
+  return "";
+}
+
+function validatePlayerStatsRows(rows) {
+  if (!Array.isArray(rows)) {
+    return "playerStats debe ser un array.";
+  }
+
+  const seenUsers = new Set();
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
+
+    const rowError = validateSinglePlayerStatRow(row, i);
+    if (rowError) return rowError;
+
+    const userKey = String(row.user || "");
+    if (userKey) {
+      if (seenUsers.has(userKey)) {
+        return `Jugador ${i + 1}: no puedes repetir el mismo jugador en playerStats.`;
+      }
+      seenUsers.add(userKey);
+    }
+  }
+
+  return "";
+}
+
+
+function calcPercent(part, total) {
+  const safePart = normalizeNumber(part);
+  const safeTotal = normalizeNumber(total);
+
+  if (safeTotal <= 0) return 0;
+  return Math.round((safePart / safeTotal) * 100);
+}
+
+function withCalculatedPlayerPercents(row) {
+  const shots = normalizeNumber(row.shots);
+  const shotsOnTarget = normalizeNumber(row.shotsOnTarget);
+
+  const passes = normalizeNumber(row.passes);
+  const passesCompleted = normalizeNumber(row.passesCompleted);
+
+  const dribbles = normalizeNumber(row.dribbles);
+  const dribblesWon = normalizeNumber(row.dribblesWon);
+
+  return {
+    ...row,
+    shotAccuracy: calcPercent(shotsOnTarget, shots),
+    passAccuracy: calcPercent(passesCompleted, passes),
+    dribbleSuccess: calcPercent(dribblesWon, dribbles),
+  };
+}
+
+function withCalculatedTeamPercents(stats) {
+  const shots = normalizeNumber(stats.shots);
+  const shotsOnTarget = normalizeNumber(stats.shotsOnTarget);
+
+  const passes = normalizeNumber(stats.passes);
+  const passesCompleted = normalizeNumber(stats.passesCompleted);
+
+  const tackles = normalizeNumber(stats.tackles);
+  const tacklesWon = normalizeNumber(stats.tacklesWon);
+
+  return {
+    ...stats,
+    shotAccuracy: calcPercent(shotsOnTarget, shots),
+    passAccuracy: calcPercent(passesCompleted, passes),
+    tackleSuccess: calcPercent(tacklesWon, tackles),
   };
 }
 
@@ -1834,16 +1923,28 @@ function SuccessBox({ text }) {
   );
 }
 
-function FieldInput({ label, value, onChange, type = "text", disabled = false }) {
+function FieldInput({
+  label,
+  value,
+  onChange,
+  type = "text",
+  disabled = false,
+  readOnly = false,
+}) {
   return (
     <label className="space-y-2">
       <span className="text-sm text-slate-300">{label}</span>
       <input
         type={type}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange?.(e.target.value)}
         disabled={disabled}
-        className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
+        readOnly={readOnly}
+        className={`w-full rounded-xl border px-3 py-2 ${
+          readOnly
+            ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-200"
+            : "border-white/10 bg-slate-900"
+        }`}
       />
     </label>
   );
@@ -1892,51 +1993,54 @@ function FieldSelectSimple({ label, value, onChange, options, disabled = false }
 
 function TeamStatsEditor({ title, stats, onChange }) {
   const fields = [
-    ["possession", "Posesión %"],
-    ["shots", "Tiros"],
-    ["shotsOnTarget", "Tiros al arco"],
-    ["shotAccuracy", "Precisión de tiro %"],
-    ["expectedGoals", "xG"],
+  { key: "possession", label: "Posesión %", readOnly: false },
+  { key: "shots", label: "Tiros", readOnly: false },
+  { key: "shotsOnTarget", label: "Tiros al arco", readOnly: false },
+  { key: "shotAccuracy", label: "Precisión de tiro %", readOnly: true },
+  { key: "expectedGoals", label: "xG", readOnly: false },
 
-    ["passes", "Pases"],
-    ["passesCompleted", "Pases completados"],
-    ["passAccuracy", "Precisión de pases %"],
+  { key: "passes", label: "Pases", readOnly: false },
+  { key: "passesCompleted", label: "Pases completados", readOnly: false },
+  { key: "passAccuracy", label: "Precisión de pases %", readOnly: true },
 
-    ["dribbleSuccess", "Regates exitosos %"],
+  { key: "dribbleSuccess", label: "Regates exitosos %", readOnly: false },
 
-    ["tackles", "Entradas"],
-    ["tacklesWon", "Entradas ganadas"],
-    ["tackleSuccess", "Éxito entradas %"],
+  { key: "tackles", label: "Entradas", readOnly: false },
+  { key: "tacklesWon", label: "Entradas ganadas", readOnly: false },
+  { key: "tackleSuccess", label: "Éxito entradas %", readOnly: true },
 
-    ["recoveries", "Recuperaciones"],
-    ["interceptions", "Intercepciones"],
-    ["clearances", "Despejes"],
-    ["blocks", "Bloqueos"],
-    ["saves", "Atajadas"],
+  { key: "recoveries", label: "Recuperaciones", readOnly: false },
+  { key: "interceptions", label: "Intercepciones", readOnly: false },
+  { key: "clearances", label: "Despejes", readOnly: false },
+  { key: "blocks", label: "Bloqueos", readOnly: false },
+  { key: "saves", label: "Atajadas", readOnly: false },
 
-    ["fouls", "Faltas"],
-    ["offsides", "Offsides"],
-    ["corners", "Corners"],
-    ["freeKicks", "Tiros libres"],
-    ["penalties", "Penales"],
+  { key: "fouls", label: "Faltas", readOnly: false },
+  { key: "offsides", label: "Offsides", readOnly: false },
+  { key: "corners", label: "Corners", readOnly: false },
+  { key: "freeKicks", label: "Tiros libres", readOnly: false },
+  { key: "penalties", label: "Penales", readOnly: false },
 
-    ["yellowCards", "Amarillas"],
-    ["redCards", "Rojas"],
-  ];
+  { key: "yellowCards", label: "Amarillas", readOnly: false },
+  { key: "redCards", label: "Rojas", readOnly: false },
+];
 
   return (
     <div className="rounded-2xl border border-white/10 bg-slate-950/30 p-4">
       <h4 className="font-semibold">{title}</h4>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
-        {fields.map(([field, label]) => (
-          <FieldInput
-            key={`${title}-${field}`}
-            label={label}
-            type="number"
-            value={stats[field]}
-            onChange={(value) => onChange(field, value)}
-          />
-        ))}
+        {fields.map((field) => (
+  <FieldInput
+    key={`${title}-${field.key}`}
+    label={field.label}
+    type="number"
+    value={stats[field.key]}
+    readOnly={field.readOnly}
+    onChange={
+      field.readOnly ? undefined : (value) => onChange(field.key, value)
+    }
+  />
+))}
       </div>
     </div>
   );
@@ -2036,7 +2140,6 @@ function PlayerStatEditor({
   title,
   row,
   memberOptions,
-  clubOptions,
   onChange,
   onRemove,
   removable,
@@ -2065,13 +2168,6 @@ function PlayerStatEditor({
           options={memberOptions.map((m) => ({ id: m.id, label: m.label }))}
         />
 
-        <FieldSelect
-          label="Club"
-          value={row.club}
-          onChange={(value) => onChange({ club: value })}
-          options={clubOptions.map((c) => ({ id: c.id, label: c.label }))}
-        />
-
         <FieldInput
           label="Posición"
           value={row.position}
@@ -2086,6 +2182,8 @@ function PlayerStatEditor({
           />
           <span className="text-sm text-slate-300">MVP</span>
         </label>
+
+        <div />
 
         <FieldInput
           label="Rating"
@@ -2126,11 +2224,11 @@ function PlayerStatEditor({
           onChange={(value) => onChange({ shotsOnTarget: value })}
         />
         <FieldInput
-          label="Precisión tiro %"
-          type="number"
-          value={row.shotAccuracy}
-          onChange={(value) => onChange({ shotAccuracy: value })}
-        />
+  label="Precisión tiro %"
+  type="number"
+  value={row.shotAccuracy}
+  readOnly={true}
+/>
 
         <FieldInput
           label="Pases"
@@ -2145,11 +2243,11 @@ function PlayerStatEditor({
           onChange={(value) => onChange({ passesCompleted: value })}
         />
         <FieldInput
-          label="Precisión pases %"
-          type="number"
-          value={row.passAccuracy}
-          onChange={(value) => onChange({ passAccuracy: value })}
-        />
+  label="Éxito regates %"
+  type="number"
+  value={row.dribbleSuccess}
+  readOnly={true}
+/>
         <FieldInput
           label="Key passes"
           type="number"

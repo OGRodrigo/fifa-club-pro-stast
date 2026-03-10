@@ -379,6 +379,12 @@ function validateLineupsAgainstClubs(lineups, homeId, awayId) {
   return null;
 }
 
+function getActingSide(actingClubId, homeId, awayId) {
+  if (sameId(actingClubId, homeId)) return "home";
+  if (sameId(actingClubId, awayId)) return "away";
+  return "";
+}
+
 /**
  * =====================================================
  * CREATE MATCH
@@ -893,6 +899,10 @@ exports.updateMatchTeamStats = async (req, res) => {
  * =====================================================
  * PATCH LINEUPS
  * PATCH /matches/:id/clubs/:clubId/lineups
+ * -----------------------------------------------------
+ * Regla:
+ * - solo se actualiza el lado del club actuante
+ * - el lado rival se conserva intacto
  * =====================================================
  */
 exports.updateMatchLineups = async (req, res) => {
@@ -914,27 +924,19 @@ exports.updateMatchLineups = async (req, res) => {
       return res.status(403).json({ message: "Tu club no participa en este partido" });
     }
 
-    const normalizedLineups = {
-      home: normalizeLineup(lineups?.home || {}),
-      away: normalizeLineup(lineups?.away || {}),
-    };
-
-    const homeErr = validateLineup(normalizedLineups.home, "lineups.home");
-    if (homeErr) {
-      return res.status(400).json({ message: homeErr });
+    const actingSide = getActingSide(actingClubId, homeId, awayId);
+    if (!actingSide) {
+      return res.status(403).json({ message: "No se pudo determinar el lado del club actuante" });
     }
 
-    const awayErr = validateLineup(normalizedLineups.away, "lineups.away");
-    if (awayErr) {
-      return res.status(400).json({ message: awayErr });
+    const incomingLineup = normalizeLineup(lineups?.[actingSide] || {});
+
+    const lineupErr = validateLineup(incomingLineup, `lineups.${actingSide}`);
+    if (lineupErr) {
+      return res.status(400).json({ message: lineupErr });
     }
 
-    const lineupClubErr = validateLineupsAgainstClubs(normalizedLineups, homeId, awayId);
-    if (lineupClubErr) {
-      return res.status(400).json({ message: lineupClubErr });
-    }
-
-    match.lineups = normalizedLineups;
+    match.lineups[actingSide] = incomingLineup;
     await match.save();
 
     const populated = await Match.findById(match._id)
@@ -942,7 +944,8 @@ exports.updateMatchLineups = async (req, res) => {
       .populate("lineups.away.players.user", "username gamerTag platform");
 
     return res.status(200).json({
-      message: "lineups actualizadas",
+      message: "lineup actualizada",
+      side: actingSide,
       lineups: populated.lineups,
     });
   } catch (error) {
@@ -1091,12 +1094,17 @@ exports.getMatchMVP = async (req, res) => {
  * =====================================================
  * PATCH PLAYER STATS
  * PATCH /matches/:id/clubs/:clubId/player-stats
+ * -----------------------------------------------------
+ * Regla:
+ * - solo se reemplazan los playerStats del club actuante
+ * - se conservan intactos los del otro club
+ * - strictTotals por defecto false porque el rival puede no tener detalle
  * =====================================================
  */
 exports.updateMatchPlayerStats = async (req, res) => {
   try {
     const { id, clubId: actingClubId } = req.params;
-    const { playerStats = [], strictTotals = true } = req.body;
+    const { playerStats = [], strictTotals = false } = req.body;
 
     if (!isValidObjectId(id) || !isValidObjectId(actingClubId)) {
       return res.status(400).json({ message: "IDs inválidos" });
@@ -1114,7 +1122,10 @@ exports.updateMatchPlayerStats = async (req, res) => {
       });
     }
 
-    const normalizedPlayerStats = normalizePlayerStats(playerStats);
+    const normalizedPlayerStats = normalizePlayerStats(playerStats).map((ps) => ({
+      ...ps,
+      club: actingClubId,
+    }));
 
     const playerStatsErr = validatePlayerStats(
       normalizedPlayerStats,
@@ -1129,7 +1140,11 @@ exports.updateMatchPlayerStats = async (req, res) => {
       return res.status(400).json({ message: playerStatsErr });
     }
 
-    match.playerStats = normalizedPlayerStats;
+    const preservedOtherClubStats = (match.playerStats || []).filter(
+      (ps) => String(ps.club) !== String(actingClubId)
+    );
+
+    match.playerStats = [...preservedOtherClubStats, ...normalizedPlayerStats];
     await match.save();
 
     const populated = await Match.findById(match._id)
@@ -1139,6 +1154,7 @@ exports.updateMatchPlayerStats = async (req, res) => {
 
     return res.status(200).json({
       message: "playerStats actualizados",
+      clubUpdated: actingClubId,
       match: populated,
     });
   } catch (error) {
