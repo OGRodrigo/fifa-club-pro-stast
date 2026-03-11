@@ -2,8 +2,7 @@
 
 Backend de la aplicación FIFA Club Pro.
 
-Stack principal:
-
+## Stack principal
 - Node.js
 - Express
 - MongoDB
@@ -12,31 +11,26 @@ Stack principal:
 
 ---
 
-# Objetivo
+## Objetivo
 
 Este backend permite:
-
 - registro e inicio de sesión
 - gestión de clubes
 - membresías y roles por club
 - solicitudes para unirse a clubes
 - creación y gestión de partidos
-- registro de playerStats
+- registro de `playerStats`
 - dashboard de liga
 - estadísticas y analítica por club
 
 ---
 
-# Arquitectura
+## Estructura base
 
 ```text
 src/
-├── config/
-├── controllers/
-├── data/
-├── docs/
-├── middlewares/
-├── models/
-├── routes/
-├── scripts/
-└── index.js
+├─ controllers/
+├─ middlewares/
+├─ models/
+├─ routes/
+└─ index.js
