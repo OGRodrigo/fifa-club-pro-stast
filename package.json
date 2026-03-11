@@ -1,5 +1,5 @@
 {
-  "name": "fifa-club-pro-backend",
+  "name": "fifa-club-pro",
   "version": "1.0.0",
   "description": "Backend de FIFA Club Pro",
   "main": "src/index.js",
