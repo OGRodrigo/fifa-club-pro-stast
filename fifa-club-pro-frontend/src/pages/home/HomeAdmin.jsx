@@ -1,3 +1,4 @@
+// src/pages/home/HomeAdmin.jsx
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { api } from "../../api/client";
@@ -39,7 +40,7 @@ export default function HomeAdmin() {
         } else {
           setSeason(String(new Date().getFullYear()));
         }
-      } catch (e) {
+      } catch {
         if (!alive) return;
         setSeasons([]);
         setSeason(String(new Date().getFullYear()));
@@ -119,7 +120,10 @@ export default function HomeAdmin() {
 
   const pj = overall?.played ?? 0;
   const pg = overall?.wins ?? 0;
+  const pe = overall?.draws ?? 0;
+  const pp = overall?.losses ?? 0;
   const gf = overall?.goalsFor ?? 0;
+  const gc = overall?.goalsAgainst ?? 0;
   const pts = overall?.points ?? 0;
 
   const lb = leaderboards?.leaderboards || null;
@@ -131,14 +135,14 @@ export default function HomeAdmin() {
   return (
     <div className="space-y-5">
       {/* HEADER */}
-      <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-5">
+      <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="text-2xl font-extrabold tracking-tight">INICIO</div>
 
             <div className="mt-1 text-sm text-[var(--fifa-mute)]">
               Estado:{" "}
-              <span className="text-[var(--fifa-neon)] font-semibold">
+              <span className="font-semibold text-[var(--fifa-neon)]">
                 {role === "admin" ? "Administrador" : "Capitán"}
               </span>
             </div>
@@ -151,11 +155,11 @@ export default function HomeAdmin() {
           </div>
 
           <div className="w-full lg:w-[220px]">
-            <div className="text-xs text-[var(--fifa-mute)] mb-2">Temporada</div>
+            <div className="mb-2 text-xs text-[var(--fifa-mute)]">Temporada</div>
             <select
               value={season}
               onChange={(e) => setSeason(e.target.value)}
-              className="w-full rounded-xl bg-black/30 ring-1 ring-[var(--fifa-line)] p-3 text-[var(--fifa-text)]"
+              className="w-full rounded-xl bg-black/30 p-3 text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)]"
             >
               {seasons.length === 0 ? (
                 <option value={season}>{season || "Sin temporadas"}</option>
@@ -177,23 +181,23 @@ export default function HomeAdmin() {
         ) : null}
 
         {err ? (
-          <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
+          <div className="mt-4 rounded-lg bg-black/30 p-3 text-sm text-[var(--fifa-danger)] ring-1 ring-[var(--fifa-danger)]/40">
             {err}
           </div>
         ) : null}
       </div>
 
       {/* ATAJOS RÁPIDOS */}
-      <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-5">
+      <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
           ACCESOS RÁPIDOS
         </div>
 
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <QuickActionCard
-            title="Crear match"
-            subtitle="Registrar partido y stats"
-            icon="📝"
+            title="Partidos"
+            subtitle="Registrar, editar y revisar matches"
+            icon="⚽"
             accent="var(--fifa-neon)"
             onClick={() => navigate("/matches")}
           />
@@ -207,11 +211,19 @@ export default function HomeAdmin() {
           />
 
           <QuickActionCard
-            title="Stats miembros"
+            title="Miembros"
             subtitle="Ver rendimiento del plantel"
             icon="📊"
             accent="var(--fifa-neon)"
             onClick={() => navigate("/club/members-stats")}
+          />
+
+          <QuickActionCard
+            title="Club Analytics"
+            subtitle="Vista ejecutiva del equipo"
+            icon="📈"
+            accent="var(--fifa-cyan)"
+            onClick={() => navigate("/club/analytics")}
           />
 
           <QuickActionCard
@@ -225,7 +237,7 @@ export default function HomeAdmin() {
       </div>
 
       {/* KPI DEL CLUB */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="PJ" value={String(pj)} />
         <StatCard label="PG" value={String(pg)} />
         <StatCard label="GF" value={String(gf)} />
@@ -233,7 +245,22 @@ export default function HomeAdmin() {
       </div>
 
       {/* KPI SECUNDARIOS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <MiniKpiCard
+          label="PE"
+          value={pe}
+          accent="var(--fifa-cyan)"
+        />
+        <MiniKpiCard
+          label="PP"
+          value={pp}
+          accent="var(--fifa-danger)"
+        />
+        <MiniKpiCard
+          label="GC"
+          value={gc}
+          accent="var(--fifa-mute)"
+        />
         <MiniKpiCard
           label="PPM"
           value={averages?.pointsPerMatch ?? 0}
@@ -245,19 +272,14 @@ export default function HomeAdmin() {
           accent="var(--fifa-neon)"
         />
         <MiniKpiCard
-          label="GC/PJ"
-          value={averages?.goalsAgainstPerMatch ?? 0}
-          accent="var(--fifa-mute)"
-        />
-        <MiniKpiCard
-          label="Racha invicta"
+          label="Invicta"
           value={streaks?.maxUnbeaten ?? 0}
           accent="var(--fifa-cyan)"
         />
       </div>
 
       {/* DESTACADOS */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <BoardCard title="TOP GOLEADOR" subtitle={notes?.topScorers}>
           {topScorers.length === 0 ? (
             <EmptyRow text="Aún no hay goles registrados." />
@@ -343,10 +365,11 @@ export default function HomeAdmin() {
       </div>
 
       {/* ÚLTIMOS PARTIDOS */}
-      <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-5">
+      <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
-  ÚLTIMOS PARTIDOS DEL CLUB
-</div>
+          ÚLTIMOS PARTIDOS DEL CLUB
+        </div>
+
         {recentMatches.length === 0 ? (
           <div className="mt-3 text-sm text-[var(--fifa-mute)]">
             No hay partidos registrados para esta temporada.
@@ -383,7 +406,7 @@ export default function HomeAdmin() {
                   key={match._id}
                   type="button"
                   onClick={() => navigate(`/matches/${match._id}`)}
-                  className="text-left rounded-xl bg-black/25 p-4 ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon transition"
+                  className="rounded-xl bg-black/25 p-4 text-left ring-1 ring-[var(--fifa-line)] transition hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-xs text-[var(--fifa-mute)]">
@@ -420,12 +443,12 @@ export default function HomeAdmin() {
       </div>
 
       {/* BLOQUE DE GESTIÓN */}
-      <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-5">
+      <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
           GESTIÓN DEL CLUB
         </div>
 
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
           <ManageCard
             title="Solicitudes pendientes"
             text="Revisa quién quiere entrar al club y acepta o rechaza."
@@ -436,8 +459,15 @@ export default function HomeAdmin() {
           <ManageCard
             title="Panel de miembros"
             text="Consulta estadísticas individuales del plantel."
-            buttonText="Ver stats miembros"
+            buttonText="Ver miembros"
             onClick={() => navigate("/club/members-stats")}
+          />
+
+          <ManageCard
+            title="Analítica del club"
+            text="Abre la vista ejecutiva con forma, líderes y métricas globales."
+            buttonText="Abrir analytics"
+            onClick={() => navigate("/club/analytics")}
           />
         </div>
       </div>
@@ -469,7 +499,7 @@ function MiniKpiCard({ label, value, accent }) {
 
 function BoardCard({ title, subtitle, children }) {
   return (
-    <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-5">
+    <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
       <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
         {title}
       </div>
@@ -488,9 +518,9 @@ function EmptyRow({ text }) {
 function FeaturePlayer({ title, subtitle, stats, emoji = "⭐", grid4 = false }) {
   return (
     <div className="mt-3">
-      <div className="rounded-2xl bg-gradient-to-br from-[rgba(0,255,194,0.08)] to-[rgba(0,0,0,0.10)] ring-1 ring-[var(--fifa-line)] p-4">
+      <div className="rounded-2xl bg-gradient-to-br from-[rgba(0,255,194,0.08)] to-[rgba(0,0,0,0.10)] p-4 ring-1 ring-[var(--fifa-line)]">
         <div className="flex items-center gap-3">
-          <div className="h-12 w-12 rounded-2xl bg-black/25 ring-1 ring-[var(--fifa-line)] flex items-center justify-center text-xl">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-black/25 text-xl ring-1 ring-[var(--fifa-line)]">
             {emoji}
           </div>
 
@@ -533,7 +563,7 @@ function QuickActionCard({ title, subtitle, icon, accent, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="text-left rounded-2xl bg-black/25 p-4 ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon transition"
+      className="rounded-2xl bg-black/25 p-4 text-left ring-1 ring-[var(--fifa-line)] transition hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon"
     >
       <div className="flex items-center justify-between gap-3">
         <div>
@@ -542,7 +572,7 @@ function QuickActionCard({ title, subtitle, icon, accent, onClick }) {
         </div>
 
         <div
-          className="h-10 w-10 rounded-xl bg-black/30 ring-1 ring-[var(--fifa-line)] flex items-center justify-center text-lg"
+          className="flex h-10 w-10 items-center justify-center rounded-xl bg-black/30 text-lg ring-1 ring-[var(--fifa-line)]"
           style={{ color: accent }}
         >
           {icon}
@@ -561,7 +591,7 @@ function ManageCard({ title, text, buttonText, onClick }) {
       <button
         type="button"
         onClick={onClick}
-        className="mt-4 rounded-lg bg-white/5 px-3 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon transition"
+        className="mt-4 rounded-lg bg-white/5 px-3 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] transition hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon"
       >
         {buttonText}
       </button>

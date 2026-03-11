@@ -1,3 +1,4 @@
+// src/pages/home/HomeMember.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { api } from "../../api/client";
@@ -38,7 +39,7 @@ export default function HomeMember() {
         } else {
           setSeason(String(new Date().getFullYear()));
         }
-      } catch (e) {
+      } catch {
         if (!alive) return;
         setSeasons([]);
         setSeason(String(new Date().getFullYear()));
@@ -122,21 +123,21 @@ export default function HomeMember() {
   return (
     <div className="space-y-5">
       {/* HEADER */}
-      <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-5">
+      <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="text-2xl font-extrabold tracking-tight">INICIO</div>
 
             <div className="mt-1 text-sm text-[var(--fifa-mute)]">
               Estado:{" "}
-              <span className="text-[var(--fifa-cyan)] font-semibold">
+              <span className="font-semibold text-[var(--fifa-cyan)]">
                 Miembro
               </span>
             </div>
 
             <div className="mt-3 text-sm text-[var(--fifa-mute)]">
               Jugador:{" "}
-              <span className="text-[var(--fifa-text)] font-semibold">
+              <span className="font-semibold text-[var(--fifa-text)]">
                 {displayName}
               </span>
               {" "}· Temporada:{" "}
@@ -145,11 +146,11 @@ export default function HomeMember() {
           </div>
 
           <div className="w-full lg:w-[220px]">
-            <div className="text-xs text-[var(--fifa-mute)] mb-2">Temporada</div>
+            <div className="mb-2 text-xs text-[var(--fifa-mute)]">Temporada</div>
             <select
               value={season}
               onChange={(e) => setSeason(e.target.value)}
-              className="w-full rounded-xl bg-black/30 ring-1 ring-[var(--fifa-line)] p-3 text-[var(--fifa-text)]"
+              className="w-full rounded-xl bg-black/30 p-3 text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)]"
             >
               {seasons.length === 0 ? (
                 <option value={season}>{season || "Sin temporadas"}</option>
@@ -171,14 +172,47 @@ export default function HomeMember() {
         ) : null}
 
         {err ? (
-          <div className="mt-4 rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
+          <div className="mt-4 rounded-lg bg-black/30 p-3 text-sm text-[var(--fifa-danger)] ring-1 ring-[var(--fifa-danger)]/40">
             {err}
           </div>
         ) : null}
       </div>
 
+      {/* ACCESOS */}
+      <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
+        <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
+          ACCESOS RÁPIDOS
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <QuickActionCard
+            title="Partidos"
+            subtitle="Ver los partidos recientes del club"
+            icon="⚽"
+            accent="var(--fifa-neon)"
+            onClick={() => navigate("/matches")}
+          />
+
+          <QuickActionCard
+            title="Liga"
+            subtitle="Ver tabla y panorama competitivo"
+            icon="🏆"
+            accent="var(--fifa-cyan)"
+            onClick={() => navigate("/league")}
+          />
+
+          <QuickActionCard
+            title="Inicio"
+            subtitle="Mantenerte en tu panel personal"
+            icon="👤"
+            accent="var(--fifa-cyan)"
+            onClick={() => navigate("/home")}
+          />
+        </div>
+      </div>
+
       {/* KPI PRINCIPALES */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Partidos" value={String(played)} />
         <StatCard label="Goles" value={String(goals)} />
         <StatCard label="Asistencias" value={String(assists)} />
@@ -186,7 +220,7 @@ export default function HomeMember() {
       </div>
 
       {/* KPI SECUNDARIOS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MiniKpiCard
           label="G/PJ"
           value={goalPerMatch}
@@ -210,14 +244,14 @@ export default function HomeMember() {
       </div>
 
       {/* PERFIL + RESUMEN */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <BoardCard
           title="TU PERFIL"
           subtitle="Resumen individual en la temporada seleccionada"
         >
-          <div className="mt-3 rounded-2xl bg-gradient-to-br from-[rgba(0,212,255,0.08)] to-[rgba(0,0,0,0.10)] ring-1 ring-[var(--fifa-line)] p-4">
+          <div className="mt-3 rounded-2xl bg-gradient-to-br from-[rgba(0,212,255,0.08)] to-[rgba(0,0,0,0.10)] p-4 ring-1 ring-[var(--fifa-line)]">
             <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-2xl bg-black/25 ring-1 ring-[var(--fifa-line)] flex items-center justify-center text-xl">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-black/25 text-xl ring-1 ring-[var(--fifa-line)]">
                 👤
               </div>
 
@@ -283,7 +317,7 @@ export default function HomeMember() {
             />
           </div>
 
-          <div className="mt-4 rounded-xl bg-black/20 ring-1 ring-[var(--fifa-line)] p-3">
+          <div className="mt-4 rounded-xl bg-black/20 p-3 ring-1 ring-[var(--fifa-line)]">
             <div className="text-xs text-[var(--fifa-mute)]">
               Fuente de datos
             </div>
@@ -298,8 +332,8 @@ export default function HomeMember() {
       </div>
 
       {/* ÚLTIMOS PARTIDOS DEL CLUB */}
-      <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-5">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
             ÚLTIMOS PARTIDOS DEL CLUB
           </div>
@@ -307,7 +341,7 @@ export default function HomeMember() {
           <button
             type="button"
             onClick={() => navigate("/league")}
-            className="rounded-lg bg-white/5 px-3 py-2 text-xs font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon transition"
+            className="rounded-lg bg-white/5 px-3 py-2 text-xs font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] transition hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon"
           >
             Ver liga
           </button>
@@ -323,8 +357,7 @@ export default function HomeMember() {
               const homeName = match?.homeClub?.name || "Home";
               const awayName = match?.awayClub?.name || "Away";
               const isHome =
-                String(match?.homeClub?._id || match?.homeClub) ===
-                String(clubId);
+                String(match?.homeClub?._id || match?.homeClub) === String(clubId);
 
               const myGoals = isHome
                 ? Number(match?.scoreHome ?? 0)
@@ -346,15 +379,15 @@ export default function HomeMember() {
               }
 
               return (
-                <div
+                <button
                   key={match._id}
-                  className="rounded-xl bg-black/25 p-4 ring-1 ring-[var(--fifa-line)]"
+                  type="button"
+                  onClick={() => navigate(`/matches/${match._id}`)}
+                  className="rounded-xl bg-black/25 p-4 text-left ring-1 ring-[var(--fifa-line)] transition hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-xs text-[var(--fifa-mute)]">
-                      {match?.date
-                        ? new Date(match.date).toLocaleDateString()
-                        : "—"}
+                      {match?.date ? new Date(match.date).toLocaleDateString() : "—"}
                     </div>
                     <div
                       className="text-[10px] font-extrabold tracking-widest"
@@ -376,7 +409,11 @@ export default function HomeMember() {
                   <div className="mt-2 text-xs text-[var(--fifa-mute)]">
                     {match?.stadium || "Sin estadio"}
                   </div>
-                </div>
+
+                  <div className="mt-3 text-[11px] font-semibold text-[var(--fifa-cyan)]">
+                    Ver detalle →
+                  </div>
+                </button>
               );
             })}
           </div>
@@ -384,7 +421,7 @@ export default function HomeMember() {
       </div>
 
       {/* BLOQUE FINAL */}
-      <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-5">
+      <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
           RESUMEN
         </div>
@@ -421,7 +458,7 @@ function MiniKpiCard({ label, value, accent }) {
 
 function BoardCard({ title, subtitle, children }) {
   return (
-    <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-5">
+    <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
       <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
         {title}
       </div>
@@ -443,5 +480,29 @@ function MiniKpi({ label, value, accent }) {
         {value}
       </div>
     </div>
+  );
+}
+
+function QuickActionCard({ title, subtitle, icon, accent, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-2xl bg-black/25 p-4 text-left ring-1 ring-[var(--fifa-line)] transition hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-extrabold text-[var(--fifa-text)]">{title}</div>
+          <div className="mt-1 text-xs text-[var(--fifa-mute)]">{subtitle}</div>
+        </div>
+
+        <div
+          className="flex h-10 w-10 items-center justify-center rounded-xl bg-black/30 text-lg ring-1 ring-[var(--fifa-line)]"
+          style={{ color: accent }}
+        >
+          {icon}
+        </div>
+      </div>
+    </button>
   );
 }
