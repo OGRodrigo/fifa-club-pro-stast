@@ -119,6 +119,7 @@ export default function MemberDetail() {
         contribPerMatch: 0,
         recentAvgRating: 0,
         lastMatches: [],
+        recentMatches: [],
       };
     }
 
@@ -174,6 +175,15 @@ export default function MemberDetail() {
       const rivalClubName =
         mySide === "home" ? awayName : mySide === "away" ? homeName : "Rival";
 
+      let result = "D";
+      if (mySide === "home") {
+        if (Number(match?.scoreHome || 0) > Number(match?.scoreAway || 0)) result = "W";
+        else if (Number(match?.scoreHome || 0) < Number(match?.scoreAway || 0)) result = "L";
+      } else if (mySide === "away") {
+        if (Number(match?.scoreAway || 0) > Number(match?.scoreHome || 0)) result = "W";
+        else if (Number(match?.scoreAway || 0) < Number(match?.scoreHome || 0)) result = "L";
+      }
+
       playerMatches.push({
         matchId: match?._id,
         date: match?.date || null,
@@ -188,6 +198,7 @@ export default function MemberDetail() {
         rating: Number(row?.rating || 0),
         minutesPlayed: Number(row?.minutesPlayed || 0),
         isMVP: Boolean(row?.isMVP),
+        result,
       });
     }
 
@@ -241,6 +252,7 @@ export default function MemberDetail() {
       contribPerMatch: played > 0 ? Number((contrib / played).toFixed(2)) : 0,
       recentAvgRating,
       lastMatches: playerMatches.slice(0, 8),
+      recentMatches,
     };
   }, [member, matches]);
 
@@ -403,6 +415,33 @@ export default function MemberDetail() {
         />
       </div>
 
+      {/* FORMA RECIENTE */}
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold">Forma reciente</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Lectura rápida de los últimos 5 partidos del jugador.
+          </p>
+        </div>
+
+        {detail.recentMatches.length === 0 ? (
+          <EmptyState
+            title="Sin forma reciente"
+            text="Este jugador aún no tiene partidos recientes con stats registradas."
+          />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            {detail.recentMatches.map((match) => (
+              <RecentMatchCard
+                key={match.matchId}
+                match={match}
+                onOpen={() => navigate(`/matches/${match.matchId}`)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* DESTACADOS PERSONALES */}
       <div className="grid gap-4 lg:grid-cols-3">
         <SpotlightCard
@@ -477,6 +516,7 @@ export default function MemberDetail() {
                   <th className="px-3 py-3">Competición</th>
                   <th className="px-3 py-3">Partido</th>
                   <th className="px-3 py-3">Marcador</th>
+                  <th className="px-3 py-3">Res.</th>
                   <th className="px-3 py-3">G</th>
                   <th className="px-3 py-3">A</th>
                   <th className="px-3 py-3">Rating</th>
@@ -509,6 +549,9 @@ export default function MemberDetail() {
                       </td>
                       <td className="px-3 py-4 text-slate-200">
                         {row.scoreHome} - {row.scoreAway}
+                      </td>
+                      <td className="px-3 py-4">
+                        <ResultBadge result={row.result} />
                       </td>
                       <td className="px-3 py-4 text-yellow-300 font-semibold">
                         {row.goals}
@@ -654,6 +697,85 @@ function MiniKpi({ label, value }) {
       <div className="text-xs text-slate-400">{label}</div>
       <div className="mt-1 text-lg font-semibold text-slate-100">{value}</div>
     </div>
+  );
+}
+
+function RecentMatchCard({ match, onOpen }) {
+  const ratingClass =
+    Number(match?.rating || 0) >= 8
+      ? "text-emerald-300"
+      : Number(match?.rating || 0) >= 6.5
+      ? "text-sky-300"
+      : Number(match?.rating || 0) > 0
+      ? "text-yellow-300"
+      : "text-slate-300";
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs text-slate-400">
+          {match?.date ? new Date(match.date).toLocaleDateString() : "—"}
+        </div>
+        <ResultBadge result={match?.result} />
+      </div>
+
+      <div className="mt-3">
+        <div className="font-semibold text-slate-100 truncate">
+          {match?.myClubName}
+        </div>
+        <div className="text-xs text-slate-400 truncate">
+          vs {match?.rivalClubName}
+        </div>
+      </div>
+
+      <div className="mt-3 text-sm text-slate-300">
+        {match?.scoreHome} - {match?.scoreAway}
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <MiniKpi label="G" value={match?.goals ?? 0} />
+        <MiniKpi label="A" value={match?.assists ?? 0} />
+        <MiniKpi label="Min" value={match?.minutesPlayed ?? 0} />
+        <MiniKpi
+          label="RTG"
+          value={
+            <span className={ratingClass}>{match?.rating || "—"}</span>
+          }
+        />
+      </div>
+
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <div className="text-xs text-slate-400">
+          {match?.isMVP ? "🏆 MVP" : "Sin MVP"}
+        </div>
+
+        <button
+          type="button"
+          onClick={onOpen}
+          className="rounded-xl border border-white/10 px-3 py-2 text-xs hover:bg-white/10"
+        >
+          Ver
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ResultBadge({ result }) {
+  const map = {
+    W: "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
+    D: "border-yellow-500/20 bg-yellow-500/10 text-yellow-300",
+    L: "border-red-500/20 bg-red-500/10 text-red-300",
+  };
+
+  return (
+    <span
+      className={`rounded-full px-2.5 py-1 text-xs font-semibold border ${
+        map[result] || "border-white/10 bg-black/20 text-slate-300"
+      }`}
+    >
+      {result || "—"}
+    </span>
   );
 }
 

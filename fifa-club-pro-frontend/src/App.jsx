@@ -15,6 +15,7 @@ import Clubs from "./pages/Clubs";
 import CreateClub from "./pages/CreateClub";
 import Matches from "./pages/Matches";
 import MatchDetail from "./pages/MatchDetail";
+import ClubAnalytics from "./pages/ClubAnalytics";
 
 import ProtectedRoute from "./auth/ProtectedRoute";
 
@@ -124,6 +125,15 @@ export default function App() {
             </Private>
           }
         />
+
+        <Route
+  path="/club/analytics"
+  element={
+    <Private>
+      <ClubAnalytics />
+    </Private>
+  }
+/>
 
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
