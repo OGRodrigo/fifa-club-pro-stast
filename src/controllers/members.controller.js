@@ -210,13 +210,13 @@ exports.getClubMembers = async (req, res) => {
 // GET /clubs/:clubId/me
 // Devuelve mi rol dentro del club (JWT + requireClubRole)
 // =====================================================
+
 exports.getMyClubRole = async (req, res) => {
   try {
-    // requireClubRole ya validó membresía y setea req.actor y req.club
     return res.status(200).json({
-      clubId: req.club._id,
-      actorUserId: req.actor.userId,
-      role: req.actor.role
+      clubId: req.clubId,
+      actorUserId: req.user?.id || null,
+      role: req.clubRole || null,
     });
   } catch (err) {
     console.error("getMyClubRole ERROR:", err);

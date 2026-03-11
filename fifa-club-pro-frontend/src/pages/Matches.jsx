@@ -1,5 +1,6 @@
 // src/pages/Matches.jsx
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -231,6 +232,7 @@ function sideOfMyClub(homeClubId, awayClubId, myClubId) {
  * ===================================================== */
 export default function Matches() {
   const { clubContext } = useAuth();
+  const navigate = useNavigate();
 
   const myClubId = clubContext?.clubId || "";
   const role = clubContext?.role || "";
@@ -353,7 +355,9 @@ export default function Matches() {
       } catch (error) {
         if (!active) return;
         setBaseErr(
-          error?.response?.data?.message || error.message || "Error cargando datos base"
+          error?.response?.data?.message ||
+            error.message ||
+            "Error cargando datos base"
         );
       } finally {
         if (active) setLoadingBase(false);
@@ -391,7 +395,9 @@ export default function Matches() {
       setMatches(Array.isArray(res.data?.data) ? res.data.data : []);
     } catch (error) {
       setMatchesErr(
-        error?.response?.data?.message || error.message || "No se pudieron cargar los partidos"
+        error?.response?.data?.message ||
+          error.message ||
+          "No se pudieron cargar los partidos"
       );
       setMatches([]);
     } finally {
@@ -452,7 +458,10 @@ export default function Matches() {
     if (createState.homeClub === createState.awayClub) {
       return "homeClub y awayClub no pueden ser el mismo.";
     }
-    if (createState.homeClub !== myClubId && createState.awayClub !== myClubId) {
+    if (
+      createState.homeClub !== myClubId &&
+      createState.awayClub !== myClubId
+    ) {
       return "Tu club debe participar en el partido.";
     }
     if (!createState.date) return "Debes indicar fecha.";
@@ -471,12 +480,15 @@ export default function Matches() {
       return;
     }
 
-    const playerStatsError = validatePlayerStatsRows(editPlayerStats.playerStats);
-if (playerStatsError) {
-  setEditPlayerStatsErr(playerStatsError);
-  setEditPlayerStatsOk("");
-  return;
-}
+    // ✅ CORRECTO:
+    // la validación del create debe usar createState.playerStats
+    // y no editPlayerStats.playerStats
+    const playerStatsError = validatePlayerStatsRows(createState.playerStats);
+    if (playerStatsError) {
+      setCreateErr(playerStatsError);
+      setCreateOk("");
+      return;
+    }
 
     try {
       setCreateSaving(true);
@@ -510,10 +522,7 @@ if (playerStatsError) {
         },
 
         playerStats: createState.playerStats.map((ps) =>
-          normalizePlayerStatForPayload(
-            { ...ps, club: myClubId },
-            myClubId
-          )
+          normalizePlayerStatForPayload({ ...ps, club: myClubId }, myClubId)
         ),
 
         strictTotals: false,
@@ -526,7 +535,9 @@ if (playerStatsError) {
       await loadMatches();
     } catch (error) {
       setCreateErr(
-        error?.response?.data?.message || error.message || "No se pudo crear el partido."
+        error?.response?.data?.message ||
+          error.message ||
+          "No se pudo crear el partido."
       );
       setCreateOk("");
     } finally {
@@ -591,7 +602,9 @@ if (playerStatsError) {
       closeEditBase();
     } catch (error) {
       setEditBaseErr(
-        error?.response?.data?.message || error.message || "No se pudo actualizar el partido."
+        error?.response?.data?.message ||
+          error.message ||
+          "No se pudo actualizar el partido."
       );
     } finally {
       setEditBase((prev) => ({ ...prev, saving: false }));
@@ -626,7 +639,9 @@ if (playerStatsError) {
       });
     } catch (error) {
       setEditTeamStatsErr(
-        error?.response?.data?.message || error.message || "No se pudo abrir teamStats."
+        error?.response?.data?.message ||
+          error.message ||
+          "No se pudo abrir teamStats."
       );
     }
   }
@@ -638,17 +653,17 @@ if (playerStatsError) {
   }
 
   function updateEditTeamStats(side, field, value) {
-  setEditTeamStats((prev) => ({
-    ...prev,
-    teamStats: {
-      ...prev.teamStats,
-      [side]: withCalculatedTeamPercents({
-        ...prev.teamStats[side],
-        [field]: value,
-      }),
-    },
-  }));
-}
+    setEditTeamStats((prev) => ({
+      ...prev,
+      teamStats: {
+        ...prev.teamStats,
+        [side]: withCalculatedTeamPercents({
+          ...prev.teamStats[side],
+          [field]: value,
+        }),
+      },
+    }));
+  }
 
   async function handleSaveTeamStats(e) {
     e.preventDefault();
@@ -658,19 +673,24 @@ if (playerStatsError) {
       setEditTeamStatsErr("");
       setEditTeamStatsOk("");
 
-      await api.patch(`/matches/${editTeamStats.matchId}/clubs/${myClubId}/team-stats`, {
-        teamStats: {
-          home: normalizeTeamStatsForPayload(editTeamStats.teamStats.home),
-          away: normalizeTeamStatsForPayload(editTeamStats.teamStats.away),
-        },
-      });
+      await api.patch(
+        `/matches/${editTeamStats.matchId}/clubs/${myClubId}/team-stats`,
+        {
+          teamStats: {
+            home: normalizeTeamStatsForPayload(editTeamStats.teamStats.home),
+            away: normalizeTeamStatsForPayload(editTeamStats.teamStats.away),
+          },
+        }
+      );
 
       setEditTeamStatsOk("Team stats actualizados.");
       await loadMatches();
       closeEditTeamStats();
     } catch (error) {
       setEditTeamStatsErr(
-        error?.response?.data?.message || error.message || "No se pudieron actualizar teamStats."
+        error?.response?.data?.message ||
+          error.message ||
+          "No se pudieron actualizar teamStats."
       );
     } finally {
       setEditTeamStats((prev) => ({ ...prev, saving: false }));
@@ -726,7 +746,9 @@ if (playerStatsError) {
       });
     } catch (error) {
       setEditLineupsErr(
-        error?.response?.data?.message || error.message || "No se pudieron abrir las lineups."
+        error?.response?.data?.message ||
+          error.message ||
+          "No se pudieron abrir las lineups."
       );
     }
   }
@@ -811,7 +833,9 @@ if (playerStatsError) {
       closeEditLineups();
     } catch (error) {
       setEditLineupsErr(
-        error?.response?.data?.message || error.message || "No se pudieron actualizar las lineups."
+        error?.response?.data?.message ||
+          error.message ||
+          "No se pudieron actualizar las lineups."
       );
     } finally {
       setEditLineups((prev) => ({ ...prev, saving: false }));
@@ -884,7 +908,9 @@ if (playerStatsError) {
       });
     } catch (error) {
       setEditPlayerStatsErr(
-        error?.response?.data?.message || error.message || "No se pudieron abrir playerStats."
+        error?.response?.data?.message ||
+          error.message ||
+          "No se pudieron abrir playerStats."
       );
     }
   }
@@ -910,13 +936,13 @@ if (playerStatsError) {
   }
 
   function updatePlayerStatRow(index, patch) {
-  setEditPlayerStats((prev) => ({
-    ...prev,
-    playerStats: prev.playerStats.map((ps, i) =>
-      i === index ? withCalculatedPlayerPercents({ ...ps, ...patch }) : ps
-    ),
-  }));
-}
+    setEditPlayerStats((prev) => ({
+      ...prev,
+      playerStats: prev.playerStats.map((ps, i) =>
+        i === index ? withCalculatedPlayerPercents({ ...ps, ...patch }) : ps
+      ),
+    }));
+  }
 
   async function handleSavePlayerStats(e) {
     e.preventDefault();
@@ -926,22 +952,24 @@ if (playerStatsError) {
       setEditPlayerStatsErr("");
       setEditPlayerStatsOk("");
 
-      await api.patch(`/matches/${editPlayerStats.matchId}/clubs/${myClubId}/player-stats`, {
-        strictTotals: false,
-        playerStats: editPlayerStats.playerStats.map((ps) =>
-          normalizePlayerStatForPayload(
-            { ...ps, club: myClubId },
-            myClubId
-          )
-        ),
-      });
+      await api.patch(
+        `/matches/${editPlayerStats.matchId}/clubs/${myClubId}/player-stats`,
+        {
+          strictTotals: false,
+          playerStats: editPlayerStats.playerStats.map((ps) =>
+            normalizePlayerStatForPayload({ ...ps, club: myClubId }, myClubId)
+          ),
+        }
+      );
 
       setEditPlayerStatsOk("Player stats actualizados.");
       await loadMatches();
       closeEditPlayerStats();
     } catch (error) {
       setEditPlayerStatsErr(
-        error?.response?.data?.message || error.message || "No se pudieron actualizar playerStats."
+        error?.response?.data?.message ||
+          error.message ||
+          "No se pudieron actualizar playerStats."
       );
     } finally {
       setEditPlayerStats((prev) => ({ ...prev, saving: false }));
@@ -966,7 +994,9 @@ if (playerStatsError) {
       await loadMatches();
     } catch (error) {
       setMatchesErr(
-        error?.response?.data?.message || error.message || "No se pudo eliminar el partido."
+        error?.response?.data?.message ||
+          error.message ||
+          "No se pudo eliminar el partido."
       );
     }
   }
@@ -980,7 +1010,8 @@ if (playerStatsError) {
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
           <h1 className="text-2xl font-bold">Matches</h1>
           <p className="mt-3 text-sm text-slate-300">
-            No tienes club activo. Selecciona o únete a un club para gestionar partidos.
+            No tienes club activo. Selecciona o únete a un club para gestionar
+            partidos.
           </p>
         </div>
       </section>
@@ -993,7 +1024,8 @@ if (playerStatsError) {
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <h1 className="text-2xl font-bold">Matches v2</h1>
         <p className="mt-2 text-sm text-slate-300">
-          Datos base completos, teamStats comparativas, lineup y playerStats solo de tu club.
+          Datos base completos, teamStats comparativas, lineup y playerStats
+          solo de tu club.
         </p>
 
         {baseErr ? (
@@ -1119,7 +1151,8 @@ if (playerStatsError) {
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
             <h3 className="font-semibold">2. Team stats</h3>
             <p className="mt-1 text-sm text-slate-400">
-              Aquí sí puedes cargar stats de ambos clubes si la captura las muestra.
+              Aquí sí puedes cargar stats de ambos clubes si la captura las
+              muestra.
             </p>
 
             <div className="mt-4 grid gap-6 lg:grid-cols-2">
@@ -1127,34 +1160,34 @@ if (playerStatsError) {
                 title="Home"
                 stats={createState.teamStats.home}
                 onChange={(field, value) =>
-  setCreateState((prev) => ({
-    ...prev,
-    teamStats: {
-      ...prev.teamStats,
-      home: withCalculatedTeamPercents({
-        ...prev.teamStats.home,
-        [field]: value,
-      }),
-    },
-  }))
-}
+                  setCreateState((prev) => ({
+                    ...prev,
+                    teamStats: {
+                      ...prev.teamStats,
+                      home: withCalculatedTeamPercents({
+                        ...prev.teamStats.home,
+                        [field]: value,
+                      }),
+                    },
+                  }))
+                }
               />
 
               <TeamStatsEditor
                 title="Away"
                 stats={createState.teamStats.away}
                 onChange={(field, value) =>
-  setCreateState((prev) => ({
-    ...prev,
-    teamStats: {
-      ...prev.teamStats,
-      away: withCalculatedTeamPercents({
-        ...prev.teamStats.away,
-        [field]: value,
-      }),
-    },
-  }))
-}
+                  setCreateState((prev) => ({
+                    ...prev,
+                    teamStats: {
+                      ...prev.teamStats,
+                      away: withCalculatedTeamPercents({
+                        ...prev.teamStats.away,
+                        [field]: value,
+                      }),
+                    },
+                  }))
+                }
               />
             </div>
           </div>
@@ -1166,11 +1199,14 @@ if (playerStatsError) {
             <div className="mt-4">
               {!myCreateSide ? (
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-400">
-                  Selecciona primero si tu club será home o away para cargar la alineación.
+                  Selecciona primero si tu club será home o away para cargar la
+                  alineación.
                 </div>
               ) : (
                 <LineupEditor
-                  title={`Lineup de mi club (${myCreateSide === "home" ? "home" : "away"})`}
+                  title={`Lineup de mi club (${
+                    myCreateSide === "home" ? "home" : "away"
+                  })`}
                   lineup={createState.lineups[myCreateSide]}
                   memberOptions={memberOptions}
                   onFormationChange={(value) =>
@@ -1221,8 +1257,8 @@ if (playerStatsError) {
                         ...prev.lineups,
                         [myCreateSide]: {
                           ...prev.lineups[myCreateSide],
-                          players: prev.lineups[myCreateSide].players.map((p, i) =>
-                            i === index ? { ...p, ...patch } : p
+                          players: prev.lineups[myCreateSide].players.map(
+                            (p, i) => (i === index ? { ...p, ...patch } : p)
                           ),
                         },
                       },
@@ -1248,7 +1284,10 @@ if (playerStatsError) {
                 onClick={() =>
                   setCreateState((prev) => ({
                     ...prev,
-                    playerStats: [...prev.playerStats, createEmptyPlayerStat(myClubId)],
+                    playerStats: [
+                      ...prev.playerStats,
+                      createEmptyPlayerStat(myClubId),
+                    ],
                   }))
                 }
                 className="rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/10"
@@ -1266,15 +1305,19 @@ if (playerStatsError) {
                   row={ps}
                   memberOptions={memberOptions}
                   onChange={(patch) =>
-  setCreateState((prev) => ({
-    ...prev,
-    playerStats: prev.playerStats.map((item, i) =>
-      i === index
-        ? withCalculatedPlayerPercents({ ...item, ...patch, club: myClubId })
-        : item
-    ),
-  }))
-}
+                    setCreateState((prev) => ({
+                      ...prev,
+                      playerStats: prev.playerStats.map((item, i) =>
+                        i === index
+                          ? withCalculatedPlayerPercents({
+                              ...item,
+                              ...patch,
+                              club: myClubId,
+                            })
+                          : item
+                      ),
+                    }))
+                  }
                   onRemove={() =>
                     setCreateState((prev) => ({
                       ...prev,
@@ -1375,12 +1418,26 @@ if (playerStatsError) {
                         {clubMap[awayId]?.name || match?.awayClub?.name || "Away"}
                       </td>
                       <td className="px-3 py-3">
-                        {normalizeNumber(match.scoreHome)} - {normalizeNumber(match.scoreAway)}
+                        {normalizeNumber(match.scoreHome)} -{" "}
+                        {normalizeNumber(match.scoreAway)}
                       </td>
-                      <td className="px-3 py-3">{match.competition || "League"}</td>
+                      <td className="px-3 py-3">
+                        {match.competition || "League"}
+                      </td>
                       <td className="px-3 py-3">{match.status || "played"}</td>
+
                       <td className="px-3 py-3">
                         <div className="flex flex-wrap gap-2">
+                          {/* ✅ NUEVO:
+                              botón directo a MatchDetail desde la lista principal */}
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/matches/${match._id}`)}
+                            className="rounded-lg border border-cyan-500/30 px-3 py-1.5 text-cyan-200 hover:bg-cyan-500/10"
+                          >
+                            Ver detalle
+                          </button>
+
                           {isAdminOrCaptain ? (
                             <>
                               <button
@@ -1448,14 +1505,18 @@ if (playerStatsError) {
               <FieldSelect
                 label="Home club"
                 value={editBase.homeClub}
-                onChange={(value) => setEditBase((prev) => ({ ...prev, homeClub: value }))}
+                onChange={(value) =>
+                  setEditBase((prev) => ({ ...prev, homeClub: value }))
+                }
                 options={clubOptions}
               />
 
               <FieldSelect
                 label="Away club"
                 value={editBase.awayClub}
-                onChange={(value) => setEditBase((prev) => ({ ...prev, awayClub: value }))}
+                onChange={(value) =>
+                  setEditBase((prev) => ({ ...prev, awayClub: value }))
+                }
                 options={clubOptions}
               />
 
@@ -1463,25 +1524,33 @@ if (playerStatsError) {
                 label="Fecha y hora"
                 type="datetime-local"
                 value={editBase.date}
-                onChange={(value) => setEditBase((prev) => ({ ...prev, date: value }))}
+                onChange={(value) =>
+                  setEditBase((prev) => ({ ...prev, date: value }))
+                }
               />
 
               <FieldInput
                 label="Estadio"
                 value={editBase.stadium}
-                onChange={(value) => setEditBase((prev) => ({ ...prev, stadium: value }))}
+                onChange={(value) =>
+                  setEditBase((prev) => ({ ...prev, stadium: value }))
+                }
               />
 
               <FieldInput
                 label="Competición"
                 value={editBase.competition}
-                onChange={(value) => setEditBase((prev) => ({ ...prev, competition: value }))}
+                onChange={(value) =>
+                  setEditBase((prev) => ({ ...prev, competition: value }))
+                }
               />
 
               <FieldSelectSimple
                 label="Estado"
                 value={editBase.status}
-                onChange={(value) => setEditBase((prev) => ({ ...prev, status: value }))}
+                onChange={(value) =>
+                  setEditBase((prev) => ({ ...prev, status: value }))
+                }
                 options={[
                   { value: "played", label: "played" },
                   { value: "scheduled", label: "scheduled" },
@@ -1493,14 +1562,18 @@ if (playerStatsError) {
                 label="Score home"
                 type="number"
                 value={editBase.scoreHome}
-                onChange={(value) => setEditBase((prev) => ({ ...prev, scoreHome: value }))}
+                onChange={(value) =>
+                  setEditBase((prev) => ({ ...prev, scoreHome: value }))
+                }
               />
 
               <FieldInput
                 label="Score away"
                 type="number"
                 value={editBase.scoreAway}
-                onChange={(value) => setEditBase((prev) => ({ ...prev, scoreAway: value }))}
+                onChange={(value) =>
+                  setEditBase((prev) => ({ ...prev, scoreAway: value }))
+                }
               />
             </div>
 
@@ -1536,13 +1609,17 @@ if (playerStatsError) {
               <TeamStatsEditor
                 title="Home"
                 stats={editTeamStats.teamStats.home}
-                onChange={(field, value) => updateEditTeamStats("home", field, value)}
+                onChange={(field, value) =>
+                  updateEditTeamStats("home", field, value)
+                }
               />
 
               <TeamStatsEditor
                 title="Away"
                 stats={editTeamStats.teamStats.away}
-                onChange={(field, value) => updateEditTeamStats("away", field, value)}
+                onChange={(field, value) =>
+                  updateEditTeamStats("away", field, value)
+                }
               />
             </div>
 
@@ -1577,16 +1654,23 @@ if (playerStatsError) {
             <div>
               {!editLineups.mySide ? (
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-400">
-                  No se pudo determinar si tu club es home o away en este partido.
+                  No se pudo determinar si tu club es home o away en este
+                  partido.
                 </div>
               ) : (
                 <LineupEditor
-                  title={`Lineup de mi club (${editLineups.mySide === "home" ? "home" : "away"})`}
+                  title={`Lineup de mi club (${
+                    editLineups.mySide === "home" ? "home" : "away"
+                  })`}
                   lineup={editLineups.lineups[editLineups.mySide]}
                   memberOptions={memberOptions}
-                  onFormationChange={(value) => updateLineupFormation(editLineups.mySide, value)}
+                  onFormationChange={(value) =>
+                    updateLineupFormation(editLineups.mySide, value)
+                  }
                   onAdd={() => addLineupPlayer(editLineups.mySide)}
-                  onRemove={(index) => removeLineupPlayer(editLineups.mySide, index)}
+                  onRemove={(index) =>
+                    removeLineupPlayer(editLineups.mySide, index)
+                  }
                   onPlayerChange={(index, patch) =>
                     updateLineupPlayer(editLineups.mySide, index, patch)
                   }
@@ -1617,13 +1701,17 @@ if (playerStatsError) {
 
       {/* Panel player stats */}
       {editPlayerStats.open ? (
-        <Panel title="Editar player stats de mi club" onClose={closeEditPlayerStats}>
+        <Panel
+          title="Editar player stats de mi club"
+          onClose={closeEditPlayerStats}
+        >
           {editPlayerStatsErr ? <ErrorBox text={editPlayerStatsErr} /> : null}
           {editPlayerStatsOk ? <SuccessBox text={editPlayerStatsOk} /> : null}
 
           <form onSubmit={handleSavePlayerStats} className="space-y-5">
             <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-400">
-              Las estadísticas individuales se guardan solo para tu club. No se valida el total global del rival.
+              Las estadísticas individuales se guardan solo para tu club. No se
+              valida el total global del rival.
             </div>
 
             <div className="flex justify-end">
@@ -1639,7 +1727,8 @@ if (playerStatsError) {
             <div className="space-y-4">
               {editPlayerStats.playerStats.length === 0 ? (
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
-                  Este partido no tiene playerStats de tu club aún. Puedes agregarlos.
+                  Este partido no tiene playerStats de tu club aún. Puedes
+                  agregarlos.
                 </div>
               ) : null}
 
@@ -1662,7 +1751,9 @@ if (playerStatsError) {
                 disabled={editPlayerStats.saving}
                 className="rounded-xl bg-emerald-600 px-5 py-2.5 font-medium hover:bg-emerald-500 disabled:opacity-50"
               >
-                {editPlayerStats.saving ? "Guardando..." : "Guardar player stats"}
+                {editPlayerStats.saving
+                  ? "Guardando..."
+                  : "Guardar player stats"}
               </button>
 
               <button
@@ -1730,7 +1821,9 @@ function normalizeLineupForPayload(lineup) {
             user: p.user,
             position: String(p.position || "").trim().toUpperCase(),
             shirtNumber:
-              p.shirtNumber === "" || p.shirtNumber === null || p.shirtNumber === undefined
+              p.shirtNumber === "" ||
+              p.shirtNumber === null ||
+              p.shirtNumber === undefined
                 ? undefined
                 : normalizeNumber(p.shirtNumber),
             starter: Boolean(p.starter),
@@ -1840,7 +1933,6 @@ function validatePlayerStatsRows(rows) {
 
   return "";
 }
-
 
 function calcPercent(part, total) {
   const safePart = normalizeNumber(part);
@@ -1993,54 +2085,54 @@ function FieldSelectSimple({ label, value, onChange, options, disabled = false }
 
 function TeamStatsEditor({ title, stats, onChange }) {
   const fields = [
-  { key: "possession", label: "Posesión %", readOnly: false },
-  { key: "shots", label: "Tiros", readOnly: false },
-  { key: "shotsOnTarget", label: "Tiros al arco", readOnly: false },
-  { key: "shotAccuracy", label: "Precisión de tiro %", readOnly: true },
-  { key: "expectedGoals", label: "xG", readOnly: false },
+    { key: "possession", label: "Posesión %", readOnly: false },
+    { key: "shots", label: "Tiros", readOnly: false },
+    { key: "shotsOnTarget", label: "Tiros al arco", readOnly: false },
+    { key: "shotAccuracy", label: "Precisión de tiro %", readOnly: true },
+    { key: "expectedGoals", label: "xG", readOnly: false },
 
-  { key: "passes", label: "Pases", readOnly: false },
-  { key: "passesCompleted", label: "Pases completados", readOnly: false },
-  { key: "passAccuracy", label: "Precisión de pases %", readOnly: true },
+    { key: "passes", label: "Pases", readOnly: false },
+    { key: "passesCompleted", label: "Pases completados", readOnly: false },
+    { key: "passAccuracy", label: "Precisión de pases %", readOnly: true },
 
-  { key: "dribbleSuccess", label: "Regates exitosos %", readOnly: false },
+    { key: "dribbleSuccess", label: "Regates exitosos %", readOnly: false },
 
-  { key: "tackles", label: "Entradas", readOnly: false },
-  { key: "tacklesWon", label: "Entradas ganadas", readOnly: false },
-  { key: "tackleSuccess", label: "Éxito entradas %", readOnly: true },
+    { key: "tackles", label: "Entradas", readOnly: false },
+    { key: "tacklesWon", label: "Entradas ganadas", readOnly: false },
+    { key: "tackleSuccess", label: "Éxito entradas %", readOnly: true },
 
-  { key: "recoveries", label: "Recuperaciones", readOnly: false },
-  { key: "interceptions", label: "Intercepciones", readOnly: false },
-  { key: "clearances", label: "Despejes", readOnly: false },
-  { key: "blocks", label: "Bloqueos", readOnly: false },
-  { key: "saves", label: "Atajadas", readOnly: false },
+    { key: "recoveries", label: "Recuperaciones", readOnly: false },
+    { key: "interceptions", label: "Intercepciones", readOnly: false },
+    { key: "clearances", label: "Despejes", readOnly: false },
+    { key: "blocks", label: "Bloqueos", readOnly: false },
+    { key: "saves", label: "Atajadas", readOnly: false },
 
-  { key: "fouls", label: "Faltas", readOnly: false },
-  { key: "offsides", label: "Offsides", readOnly: false },
-  { key: "corners", label: "Corners", readOnly: false },
-  { key: "freeKicks", label: "Tiros libres", readOnly: false },
-  { key: "penalties", label: "Penales", readOnly: false },
+    { key: "fouls", label: "Faltas", readOnly: false },
+    { key: "offsides", label: "Offsides", readOnly: false },
+    { key: "corners", label: "Corners", readOnly: false },
+    { key: "freeKicks", label: "Tiros libres", readOnly: false },
+    { key: "penalties", label: "Penales", readOnly: false },
 
-  { key: "yellowCards", label: "Amarillas", readOnly: false },
-  { key: "redCards", label: "Rojas", readOnly: false },
-];
+    { key: "yellowCards", label: "Amarillas", readOnly: false },
+    { key: "redCards", label: "Rojas", readOnly: false },
+  ];
 
   return (
     <div className="rounded-2xl border border-white/10 bg-slate-950/30 p-4">
       <h4 className="font-semibold">{title}</h4>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {fields.map((field) => (
-  <FieldInput
-    key={`${title}-${field.key}`}
-    label={field.label}
-    type="number"
-    value={stats[field.key]}
-    readOnly={field.readOnly}
-    onChange={
-      field.readOnly ? undefined : (value) => onChange(field.key, value)
-    }
-  />
-))}
+          <FieldInput
+            key={`${title}-${field.key}`}
+            label={field.label}
+            type="number"
+            value={stats[field.key]}
+            readOnly={field.readOnly}
+            onChange={
+              field.readOnly ? undefined : (value) => onChange(field.key, value)
+            }
+          />
+        ))}
       </div>
     </div>
   );
@@ -2108,14 +2200,18 @@ function LineupEditor({
               label="Dorsal"
               type="number"
               value={player.shirtNumber}
-              onChange={(value) => onPlayerChange(index, { shirtNumber: value })}
+              onChange={(value) =>
+                onPlayerChange(index, { shirtNumber: value })
+              }
             />
 
             <label className="flex items-end gap-3 pb-2">
               <input
                 type="checkbox"
                 checked={Boolean(player.starter)}
-                onChange={(e) => onPlayerChange(index, { starter: e.target.checked })}
+                onChange={(e) =>
+                  onPlayerChange(index, { starter: e.target.checked })
+                }
               />
               <span className="text-sm text-slate-300">Titular</span>
             </label>
@@ -2224,11 +2320,11 @@ function PlayerStatEditor({
           onChange={(value) => onChange({ shotsOnTarget: value })}
         />
         <FieldInput
-  label="Precisión tiro %"
-  type="number"
-  value={row.shotAccuracy}
-  readOnly={true}
-/>
+          label="Precisión tiro %"
+          type="number"
+          value={row.shotAccuracy}
+          readOnly={true}
+        />
 
         <FieldInput
           label="Pases"
@@ -2243,11 +2339,11 @@ function PlayerStatEditor({
           onChange={(value) => onChange({ passesCompleted: value })}
         />
         <FieldInput
-  label="Éxito regates %"
-  type="number"
-  value={row.dribbleSuccess}
-  readOnly={true}
-/>
+          label="Éxito regates %"
+          type="number"
+          value={row.dribbleSuccess}
+          readOnly={true}
+        />
         <FieldInput
           label="Key passes"
           type="number"
@@ -2267,7 +2363,6 @@ function PlayerStatEditor({
           value={row.dribblesWon}
           onChange={(value) => onChange({ dribblesWon: value })}
         />
-       
 
         <FieldInput
           label="Entradas"

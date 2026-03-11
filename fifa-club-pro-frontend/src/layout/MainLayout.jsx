@@ -41,12 +41,14 @@ export default function MainLayout({ children }) {
 
   return (
     <div className="min-h-screen bg-fifa-radial">
+
       {/* HEADER */}
       <header className="sticky top-0 z-20 border-b border-[var(--fifa-line)]/70 bg-black/30 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
+
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 ring-1 ring-[var(--fifa-neon)]/25 shadow-glow">
-              <span className="text-sm">⚽</span>
+              ⚽
             </div>
 
             <div>
@@ -57,9 +59,13 @@ export default function MainLayout({ children }) {
               <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--fifa-mute)]">
                 <span>
                   clubId:{" "}
-                  <span className="text-[var(--fifa-text)]">{clubId || "—"}</span>
+                  <span className="text-[var(--fifa-text)]">
+                    {clubId || "—"}
+                  </span>
                   {" "}· rol:{" "}
-                  <span className="text-[var(--fifa-text)]">{role || "—"}</span>
+                  <span className="text-[var(--fifa-text)]">
+                    {role || "—"}
+                  </span>
                 </span>
 
                 {canCopyId && (
@@ -92,8 +98,10 @@ export default function MainLayout({ children }) {
 
       {/* LAYOUT */}
       <div className="mx-auto grid max-w-7xl grid-cols-12 gap-5 px-5 py-6">
+
         <aside className="col-span-12 md:col-span-3 xl:col-span-2">
           <div className="overflow-hidden rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow">
+
             <div className="border-b border-[var(--fifa-line)]/70 px-4 py-4">
               <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
                 NAVEGACIÓN
@@ -102,12 +110,11 @@ export default function MainLayout({ children }) {
 
             <div className="px-3 py-3">
               <nav className="space-y-2">
-                {/* GENERAL */}
+
                 <MenuSection title="General" />
                 <MenuLink to="/home" label="Inicio" icon="🏠" />
                 <MenuLink to="/league" label="Liga" icon="🏆" />
 
-                {/* SIN CLUB */}
                 {!hasClub && (
                   <>
                     <MenuSection title="Club" />
@@ -116,7 +123,6 @@ export default function MainLayout({ children }) {
                   </>
                 )}
 
-                {/* CON CLUB */}
                 {hasClub && (
                   <>
                     <MenuSection title="Club activo" />
@@ -124,7 +130,6 @@ export default function MainLayout({ children }) {
                   </>
                 )}
 
-                {/* ADMIN / CAPTAIN */}
                 {hasClub && isAdminOrCaptain && (
                   <>
                     <MenuSection title="Gestión" />
@@ -145,43 +150,17 @@ export default function MainLayout({ children }) {
                     />
                   </>
                 )}
+
               </nav>
             </div>
 
-            <div className="border-t border-[var(--fifa-line)]/80 px-4 py-4">
-              <div className="rounded-xl bg-black/30 p-3 ring-1 ring-[var(--fifa-line)]">
-                <div className="text-xs text-[var(--fifa-mute)]">Estado actual</div>
-                <div className="mt-1 text-sm text-[var(--fifa-text)]">
-                  {hasClub ? (
-                    <>
-                      Estás operando dentro de un club con rol{" "}
-                      <span className="font-semibold text-[var(--fifa-neon)]">
-                        {role}
-                      </span>
-                      .
-                    </>
-                  ) : (
-                    <>
-                      Aún no tienes un club activo. Puedes{" "}
-                      <span className="font-semibold text-[var(--fifa-neon)]">
-                        crear
-                      </span>{" "}
-                      uno o{" "}
-                      <span className="font-semibold text-[var(--fifa-neon)]">
-                        unirte
-                      </span>{" "}
-                      a uno existente.
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
           </div>
         </aside>
 
         <main className="col-span-12 min-w-0 md:col-span-9 xl:col-span-10">
           {children}
         </main>
+
       </div>
     </div>
   );

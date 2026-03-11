@@ -1,154 +1,151 @@
-// src/pages/CreateClub.jsx
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { useToast } from "../ui/ToastContext";
 
-/**
- * CREATE CLUB (skin FIFA)
- * - POST /clubs (requiere JWT; tu interceptor lo agrega)
- * - Al crear: el creador queda como admin (backend)
- * - ✅ Guardamos clubContext => { clubId, role: "admin" }
- * - ✅ Redirigimos a /home para ver el clubId/rol arriba
- */
 export default function CreateClub() {
-  const nav = useNavigate();
-  const { setClubContext } = useAuth(); // ✅ FIX: ahora sí existe
+  const navigate = useNavigate();
+  const { setClubContext } = useAuth();
+  const toast = useToast();
 
-  // Estado del form
-  const [name, setName] = useState("");
-  const [country, setCountry] = useState("Chile");
-  const [isPrivate, setIsPrivate] = useState(true);
+  const [form, setForm] = useState({
+    name: "",
+    country: "",
+  });
 
-  // Estado UI
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
 
-  const onSubmit = async (e) => {
+  const onChange = (field, value) => {
+    setForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setErr("");
-    setLoading(true);
+
+    const name = form.name.trim();
+    const country = form.country.trim();
+
+    if (!name) {
+      toast.error("Debes ingresar el nombre del club.");
+      return;
+    }
+
+    if (!country) {
+      toast.error("Debes ingresar el país del club.");
+      return;
+    }
 
     try {
-      const payload = {
-        name: name.trim(),
-        country: country.trim(),
+      setLoading(true);
 
-        /**
-         * ⚠️ Si tu backend NO tiene isPrivate en el schema o valida estricto,
-         * coméntalo para evitar 400.
-         */
-        isPrivate,
-      };
+      const res = await api.post("/clubs", {
+        name,
+        country,
+      });
 
-      const { data } = await api.post("/clubs", payload);
+      const createdClub = res?.data?.club || res?.data?.data || res?.data;
 
-      // ✅ Guardar contexto del club (clave para que MainLayout muestre clubId/rol)
-      setClubContext({ clubId: data._id, role: "admin" });
+      const createdClubId =
+        createdClub?._id || createdClub?.id || res?.data?.clubId || "";
 
-      // ✅ Ir a Home para ver ya el header con clubId/rol
-      nav("/home");
-    } catch (e2) {
-      setErr(e2?.response?.data?.message || e2.message);
+      if (createdClubId) {
+        setClubContext({
+          clubId: createdClubId,
+          role: "admin",
+        });
+      }
+
+      toast.success("Club creado correctamente.");
+      navigate("/home");
+    } catch (e) {
+      const status = e?.response?.status;
+      const backendMessage = e?.response?.data?.message;
+
+      if (status === 409) {
+        toast.error(backendMessage || "Ya existe un club con ese nombre.");
+        return;
+      }
+
+      toast.error(backendMessage || e.message || "No se pudo crear el club");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="rounded-2xl bg-[var(--fifa-card)] ring-1 ring-[var(--fifa-line)] shadow-[0_10px_30px_rgba(0,0,0,0.35)] p-6">
-        <h1 className="text-3xl font-extrabold tracking-tight text-[var(--fifa-text)]">
-          Crear club
-        </h1>
-        <p className="mt-1 text-[var(--fifa-mute)]">
-          Crea un club y luego podrás invitar miembros y asignar roles.
-        </p>
-      </div>
+    <div className="min-h-screen bg-fifa-radial">
+      <div className="mx-auto max-w-xl px-4 py-10 space-y-6">
+        <div className="space-y-1 text-center">
+          <h1 className="text-3xl font-bold text-fifa-text">Crear club</h1>
 
-      {/* Form card */}
-      <div className="max-w-xl rounded-2xl bg-[var(--fifa-card)] ring-1 ring-[var(--fifa-line)] shadow-[0_10px_30px_rgba(0,0,0,0.35)] overflow-hidden">
-        <div className="px-6 py-5 border-b border-[var(--fifa-line)]/70 bg-black/20">
-          <div className="text-xs font-semibold tracking-widest text-[var(--fifa-neon)]">
-            NUEVO CLUB
-          </div>
-          <div className="text-sm text-[var(--fifa-mute)]">
-            Completa los datos básicos.
-          </div>
+          <p className="text-fifa-mute">
+            Completa los datos básicos para registrar tu club.
+          </p>
         </div>
 
-        <form onSubmit={onSubmit} className="p-6 space-y-4">
-          {err ? (
-            <div className="rounded-lg bg-black/30 ring-1 ring-[var(--fifa-danger)]/40 p-3 text-sm text-[var(--fifa-danger)]">
-              {err}
+        <div className="rounded-2xl border border-fifa-line bg-fifa-card shadow-glow p-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm text-fifa-mute">
+                Nombre del club
+              </label>
+
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => onChange("name", e.target.value)}
+                placeholder="Ej: FC Prueba Final"
+                className="
+                  w-full rounded-xl px-4 py-3
+                  bg-black/30 text-fifa-text
+                  border border-fifa-line
+                  focus:outline-none
+                  focus:border-fifa-blue
+                "
+              />
             </div>
-          ) : null}
 
-          <div>
-            <label className="block text-sm text-[var(--fifa-mute)]">
-              Nombre del club
-            </label>
-            <input
-              className="mt-1 w-full rounded-lg bg-black/25 ring-1 ring-[var(--fifa-line)] px-3 py-2 text-[var(--fifa-text)] outline-none focus:ring-[var(--fifa-cyan)]/40"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Starteam"
-              autoComplete="off"
-              required
-            />
-          </div>
+            <div className="space-y-2">
+              <label className="text-sm text-fifa-mute">País</label>
 
-          <div>
-            <label className="block text-sm text-[var(--fifa-mute)]">País</label>
-            <input
-              className="mt-1 w-full rounded-lg bg-black/25 ring-1 ring-[var(--fifa-line)] px-3 py-2 text-[var(--fifa-text)] outline-none focus:ring-[var(--fifa-cyan)]/40"
-              value={country}
-              onChange={(e) => setCountry(e.target.value)}
-              placeholder="Chile"
-              autoComplete="country-name"
-            />
-          </div>
-
-          <div className="flex items-center justify-between rounded-xl bg-black/20 ring-1 ring-[var(--fifa-line)] p-4">
-            <div>
-              <div className="text-sm font-semibold text-[var(--fifa-text)]">
-                Club privado
-              </div>
-              <div className="text-xs text-[var(--fifa-mute)]">
-                Si es privado, solo miembros invitados podrán verlo.
-              </div>
+              <input
+                type="text"
+                value={form.country}
+                onChange={(e) => onChange("country", e.target.value)}
+                placeholder="Ej: Chile"
+                className="
+                  w-full rounded-xl px-4 py-3
+                  bg-black/30 text-fifa-text
+                  border border-fifa-line
+                  focus:outline-none
+                  focus:border-fifa-blue
+                "
+              />
             </div>
 
             <button
-              type="button"
-              onClick={() => setIsPrivate((v) => !v)}
-              className={`rounded-lg px-3 py-2 text-sm font-semibold ring-1 transition ${
-                isPrivate
-                  ? "bg-white/5 text-[var(--fifa-text)] ring-[var(--fifa-neon)]/30 hover:shadow-[0_0_22px_rgba(36,255,122,0.18)]"
-                  : "bg-white/5 text-[var(--fifa-mute)] ring-[var(--fifa-line)]"
-              }`}
-            >
-              {isPrivate ? "Sí" : "No"}
-            </button>
-          </div>
-
-          <div className="flex gap-3">
-            <button
+              type="submit"
               disabled={loading}
-              className="flex-1 rounded-lg bg-white/5 px-3 py-2 font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-neon)]/30 hover:shadow-[0_0_22px_rgba(36,255,122,0.22)] transition disabled:opacity-60"
+              className="
+                w-full rounded-xl px-4 py-3
+                text-sm font-semibold
+                bg-fifa-blue text-white
+                hover:opacity-90 active:opacity-80
+                shadow-neon disabled:opacity-60
+              "
             >
               {loading ? "Creando..." : "Crear club"}
             </button>
+          </form>
 
-            <Link
-              to="/home"
-              className="rounded-lg px-3 py-2 text-sm font-semibold text-[var(--fifa-mute)] ring-1 ring-[var(--fifa-line)] hover:text-[var(--fifa-text)] hover:ring-[var(--fifa-cyan)]/30 transition"
-            >
-              Volver
-            </Link>
-          </div>
-        </form>
+          <p className="mt-4 text-xs text-fifa-mute text-center">
+            Al crear el club quedarás como administrador inicial.
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -3,6 +3,13 @@ const Match = require("../models/Match");
 const User = require("../models/User");
 
 /**
+ * Escapa texto para usarlo seguro en regex
+ */
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
  * =====================================================
  * CLUBS CONTROLLER
  * =====================================================
@@ -47,8 +54,13 @@ const createClub = async (req, res) => {
   try {
     const { name, country, founded, isPrivate } = req.body;
 
-    if (!name || !country) {
-      return res.status(400).json({ message: "name y country son obligatorios" });
+    const nameNorm = String(name || "").trim();
+    const countryNorm = String(country || "").trim();
+
+    if (!nameNorm || !countryNorm) {
+      return res.status(400).json({
+        message: "name y country son obligatorios",
+      });
     }
 
     const creatorUserId = req.user?.id;
@@ -56,27 +68,66 @@ const createClub = async (req, res) => {
       return res.status(401).json({ message: "No autenticado" });
     }
 
-    const user = await User.findById(creatorUserId);
+    const user = await User.findById(creatorUserId).select("_id");
     if (!user) {
       return res.status(404).json({ message: "Usuario creador no existe" });
     }
 
-    const existingClub = await Club.findOne({ "members.user": creatorUserId }).select("_id");
-    if (existingClub) {
+    const existingClubByMembership = await Club.findOne({
+      "members.user": creatorUserId,
+    }).select("_id");
+
+    if (existingClubByMembership) {
       return res.status(400).json({ message: "Ya perteneces a un club" });
     }
 
+    /**
+     * Validación de nombre repetido sin distinguir mayúsculas/minúsculas
+     * Ejemplo:
+     * - FC Prueba
+     * - fc prueba
+     * => se consideran el mismo club
+     */
+    const existingClubByName = await Club.findOne({
+      name: {
+        $regex: `^${escapeRegex(nameNorm)}$`,
+        $options: "i",
+      },
+    }).select("_id name");
+
+    if (existingClubByName) {
+      return res.status(409).json({
+        message: "Ya existe un club con ese nombre",
+      });
+    }
+
     const club = await Club.create({
-      name: name.trim(),
-      country: country.trim(),
+      name: nameNorm,
+      country: countryNorm,
       founded,
       isPrivate: Boolean(isPrivate),
-      members: [{ user: creatorUserId, role: "admin" }]
+      members: [{ user: creatorUserId, role: "admin" }],
     });
 
     return res.status(201).json(club);
   } catch (error) {
     console.error("createClub ERROR:", error);
+
+    /**
+     * Fallback por índice único de Mongo
+     */
+    if (error?.code === 11000) {
+      if (error?.keyPattern?.name) {
+        return res.status(409).json({
+          message: "Ya existe un club con ese nombre",
+        });
+      }
+
+      return res.status(409).json({
+        message: "Ya existe un registro duplicado",
+      });
+    }
+
     return res.status(500).json({ message: "Error al crear club" });
   }
 };
@@ -87,17 +138,61 @@ const createClub = async (req, res) => {
 const updateClub = async (req, res) => {
   try {
     const { clubId } = req.params;
+    const incomingName = req.body?.name ? String(req.body.name).trim() : "";
 
-    const club = await Club.findByIdAndUpdate(clubId, req.body, {
+    if (incomingName) {
+      const existingClubByName = await Club.findOne({
+        _id: { $ne: clubId },
+        name: {
+          $regex: `^${escapeRegex(incomingName)}$`,
+          $options: "i",
+        },
+      }).select("_id");
+
+      if (existingClubByName) {
+        return res.status(409).json({
+          message: "Ya existe un club con ese nombre",
+        });
+      }
+    }
+
+    const payload = {
+      ...req.body,
+    };
+
+    if (payload.name !== undefined) {
+      payload.name = String(payload.name).trim();
+    }
+
+    if (payload.country !== undefined) {
+      payload.country = String(payload.country).trim();
+    }
+
+    const club = await Club.findByIdAndUpdate(clubId, payload, {
       new: true,
-      runValidators: true
+      runValidators: true,
     });
 
-    if (!club) return res.status(404).json({ message: "Club no encontrado" });
+    if (!club) {
+      return res.status(404).json({ message: "Club no encontrado" });
+    }
 
     return res.status(200).json(club);
   } catch (error) {
     console.error("updateClub ERROR:", error);
+
+    if (error?.code === 11000) {
+      if (error?.keyPattern?.name) {
+        return res.status(409).json({
+          message: "Ya existe un club con ese nombre",
+        });
+      }
+
+      return res.status(409).json({
+        message: "Ya existe un registro duplicado",
+      });
+    }
+
     return res.status(400).json({ message: "Error al actualizar club" });
   }
 };
@@ -135,7 +230,7 @@ const getClubDashboard = async (req, res) => {
 
     return res.status(200).json({
       club,
-      members: club.members
+      members: club.members,
     });
   } catch (err) {
     console.error("getClubDashboard ERROR:", err);
@@ -151,7 +246,7 @@ const getClubForm = async (req, res) => {
     const { clubId } = req.params;
 
     const matches = await Match.find({
-      $or: [{ homeClub: clubId }, { awayClub: clubId }]
+      $or: [{ homeClub: clubId }, { awayClub: clubId }],
     }).sort({ date: -1 });
 
     return res.status(200).json(matches.slice(0, 5));
@@ -171,8 +266,8 @@ const getHeadToHeadClubs = async (req, res) => {
     const matches = await Match.find({
       $or: [
         { homeClub: clubAId, awayClub: clubBId },
-        { homeClub: clubBId, awayClub: clubAId }
-      ]
+        { homeClub: clubBId, awayClub: clubAId },
+      ],
     });
 
     return res.status(200).json(matches);
@@ -190,5 +285,5 @@ module.exports = {
   deleteClub,
   getClubDashboard,
   getClubForm,
-  getHeadToHeadClubs
+  getHeadToHeadClubs,
 };

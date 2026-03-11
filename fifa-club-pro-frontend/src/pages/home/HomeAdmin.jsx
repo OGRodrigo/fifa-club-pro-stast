@@ -5,11 +5,13 @@ import { api } from "../../api/client";
 import { useNavigate } from "react-router-dom";
 
 export default function HomeAdmin() {
-  const { clubContext } = useAuth();
+  const { clubContext, clearClubContext } = useAuth();
   const navigate = useNavigate();
 
   const clubId = clubContext?.clubId || "";
   const role = clubContext?.role || "";
+
+  const isAdmin = role === "admin";
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -20,6 +22,8 @@ export default function HomeAdmin() {
 
   const [seasons, setSeasons] = useState([]);
   const [season, setSeason] = useState("");
+
+  const [deletingClub, setDeletingClub] = useState(false);
 
   // =========================
   // Cargar temporadas disponibles
@@ -113,6 +117,45 @@ export default function HomeAdmin() {
       alive = false;
     };
   }, [clubId, season]);
+
+  // =========================
+  // Eliminar club
+  // =========================
+  async function handleDeleteClub() {
+    if (!isAdmin) {
+      setErr("Solo el administrador puede eliminar el club.");
+      return;
+    }
+
+    if (!clubId) {
+      setErr("No se encontró el club activo.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "¿Seguro que deseas eliminar este club?\n\nEsta acción eliminará el club completo."
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setDeletingClub(true);
+      setErr("");
+
+      await api.delete(`/clubs/${clubId}`);
+
+      clearClubContext();
+      navigate("/home", { replace: true });
+    } catch (e) {
+      setErr(
+        e?.response?.data?.message ||
+          e.message ||
+          "No se pudo eliminar el club."
+      );
+    } finally {
+      setDeletingClub(false);
+    }
+  }
 
   const overall = summary?.overall || null;
   const averages = summary?.averages || null;
@@ -246,21 +289,9 @@ export default function HomeAdmin() {
 
       {/* KPI SECUNDARIOS */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <MiniKpiCard
-          label="PE"
-          value={pe}
-          accent="var(--fifa-cyan)"
-        />
-        <MiniKpiCard
-          label="PP"
-          value={pp}
-          accent="var(--fifa-danger)"
-        />
-        <MiniKpiCard
-          label="GC"
-          value={gc}
-          accent="var(--fifa-mute)"
-        />
+        <MiniKpiCard label="PE" value={pe} accent="var(--fifa-cyan)" />
+        <MiniKpiCard label="PP" value={pp} accent="var(--fifa-danger)" />
+        <MiniKpiCard label="GC" value={gc} accent="var(--fifa-mute)" />
         <MiniKpiCard
           label="PPM"
           value={averages?.pointsPerMatch ?? 0}
@@ -470,6 +501,26 @@ export default function HomeAdmin() {
             onClick={() => navigate("/club/analytics")}
           />
         </div>
+
+        {isAdmin ? (
+          <div className="mt-5 rounded-xl border border-[var(--fifa-danger)]/30 bg-[rgba(255,60,60,0.08)] p-4">
+            <div className="text-sm font-extrabold text-[var(--fifa-danger)]">
+              Zona sensible
+            </div>
+            <div className="mt-1 text-sm text-[var(--fifa-mute)]">
+              Esta acción elimina el club completo. Solo el administrador puede hacerlo.
+            </div>
+
+            <button
+              type="button"
+              onClick={handleDeleteClub}
+              disabled={deletingClub}
+              className="mt-4 rounded-lg bg-[var(--fifa-danger)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+            >
+              {deletingClub ? "Eliminando club..." : "Eliminar club"}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

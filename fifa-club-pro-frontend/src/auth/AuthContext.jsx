@@ -33,6 +33,9 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
+/**
+ * Parseo seguro para localStorage
+ */
 function safeParseJSON(rawValue) {
   if (!rawValue) return null;
 
@@ -110,7 +113,11 @@ export function AuthProvider({ children }) {
    * }
    * -----------------------------------------------------
    */
-  const setSessionFromLogin = ({ token: nextToken, user: nextUser, clubContext: nextClubContext }) => {
+  const setSessionFromLogin = ({
+    token: nextToken,
+    user: nextUser,
+    clubContext: nextClubContext,
+  }) => {
     // token
     if (nextToken) {
       setToken(nextToken);
@@ -237,5 +244,9 @@ export function AuthProvider({ children }) {
     [token, user, clubContext, booting, isLoggedIn]
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 }

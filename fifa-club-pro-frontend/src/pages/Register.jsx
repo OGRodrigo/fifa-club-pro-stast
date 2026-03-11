@@ -1,37 +1,12 @@
-// src/pages/Register.jsx
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { register as apiRegister, me as apiMe } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
 
-/**
- * =====================================================
- * REGISTER PAGE
- * -----------------------------------------------------
- * Responsabilidades:
- * - capturar datos del nuevo usuario
- * - llamar POST /auth/register
- * - guardar sesión si backend devuelve token + user
- * - intentar reconstruir clubContext con /auth/me si aplica
- * - redirigir a /home cuando el backend hace autologin
- * - si el backend no hace autologin, redirigir a /login
- *
- * IMPORTANTE:
- * El backend UserSchema acepta platform solo con enum:
- * - "PS"
- * - "XBOX"
- * - "PC"
- *
- * Por eso este formulario debe enviar SOLO esos valores.
- * =====================================================
- */
 export default function Register() {
   const navigate = useNavigate();
   const { setSessionFromLogin, setClubContext } = useAuth();
 
-  // -------------------------
-  // Form state
-  // -------------------------
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,9 +14,6 @@ export default function Register() {
   const [platform, setPlatform] = useState("PS");
   const [country, setCountry] = useState("");
 
-  // -------------------------
-  // UI state
-  // -------------------------
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
@@ -101,7 +73,7 @@ export default function Register() {
         email: email.trim(),
         password: password.trim(),
         gamerTag: gamerTag.trim(),
-        platform: platform.trim(), // "PS" | "XBOX" | "PC"
+        platform: platform.trim(),
         country: country.trim(),
       };
 
@@ -111,7 +83,6 @@ export default function Register() {
       const user = data?.user || null;
       let clubContext = data?.clubContext || null;
 
-      // Caso 1: backend hace autologin
       if (token && user) {
         setSessionFromLogin({
           token,
@@ -131,14 +102,17 @@ export default function Register() {
         return;
       }
 
-      // Caso 2: backend registra pero no inicia sesión
       navigate("/login", { replace: true });
     } catch (error) {
-      setErr(
-        error?.response?.data?.message ||
-          error.message ||
-          "No se pudo registrar la cuenta."
-      );
+      const status = error?.response?.status;
+      const backendMessage = error?.response?.data?.message;
+
+      if (status === 409) {
+        setErr(backendMessage || "Ya existe un usuario con esos datos.");
+        return;
+      }
+
+      setErr(backendMessage || error.message || "No se pudo registrar la cuenta.");
     } finally {
       setLoading(false);
     }
@@ -148,7 +122,6 @@ export default function Register() {
     <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
       <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4 py-10">
         <div className="grid w-full overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-2xl lg:grid-cols-2">
-          {/* PANEL IZQUIERDO */}
           <section className="hidden lg:flex flex-col justify-between bg-black/20 p-10">
             <div>
               <div className="inline-flex rounded-full border border-sky-500/30 bg-sky-500/10 px-4 py-1 text-xs font-semibold uppercase tracking-widest text-sky-300">
@@ -185,7 +158,6 @@ export default function Register() {
             </div>
           </section>
 
-          {/* PANEL DERECHO */}
           <section className="p-6 sm:p-8 lg:p-10">
             <div className="mx-auto w-full max-w-md">
               <div className="mb-8">

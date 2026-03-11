@@ -6,67 +6,68 @@ const mongoose = require("mongoose");
  * -----------------------------------------------------
  * Representa a un jugador/usuario del sistema.
  *
- * Campos clave:
- * - username: identificador único público
- * - email: único, normalizado a lowercase
- * - gamerTag: nombre in-game
- * - platform: plataforma principal
- * - country: país del jugador
- * - passwordHash: hash bcrypt del password (LOGIN REAL)
+ * Reglas importantes:
+ * - username único
+ * - email único
+ * - ambos se normalizan con trim
+ * - email además se guarda en lowercase
  * =====================================================
  */
 
 const UserSchema = new mongoose.Schema(
   {
-    // 🧑 Nombre de usuario (único en el sistema)
     username: {
       type: String,
       required: true,
       unique: true,
       trim: true,
-      minlength: 3
+      minlength: 3,
     },
 
-    // 📧 Email (único, normalizado)
     email: {
       type: String,
       required: true,
       unique: true,
       trim: true,
-      lowercase: true
+      lowercase: true,
     },
 
-    // 🔐 Hash del password (bcrypt)
     passwordHash: {
       type: String,
       required: true,
-      select: false // 👈 importante: no lo devuelve por defecto
+      select: false,
     },
 
-    // 🎮 Plataforma principal
     platform: {
       type: String,
       enum: ["PS", "XBOX", "PC"],
-      default: "PS"
+      default: "PS",
     },
 
-    // 🕹️ GamerTag / Nick in-game
     gamerTag: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
 
-    // 🌎 País del jugador
     country: {
       type: String,
       default: "Chile",
-      trim: true
-    }
+      trim: true,
+    },
   },
   {
-    timestamps: true
+    timestamps: true,
   }
 );
 
-module.exports = mongoose.model("User", UserSchema);
+/**
+ * Índices explícitos
+ * -----------------------------------------------------
+ * Aunque "unique: true" ya ayuda, dejar los índices
+ * explícitos hace más claro el contrato del modelo.
+ */
+UserSchema.index({ username: 1 }, { unique: true });
+UserSchema.index({ email: 1 }, { unique: true });
+
+module.exports = mongoose.models.User || mongoose.model("User", UserSchema);

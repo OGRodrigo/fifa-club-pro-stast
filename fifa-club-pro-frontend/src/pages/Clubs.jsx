@@ -1,175 +1,101 @@
-import { useEffect, useState } from "react";
-import { api } from "../api/client";
-import { useAuth } from "../auth/AuthContext";
+import { useState } from "react";
 import { requestJoinClub } from "../api/clubs";
 import { useToast } from "../ui/ToastContext";
 
 export default function Clubs() {
-  const { setClubContext } = useAuth();
   const toast = useToast();
 
-  const [clubs, setClubs] = useState([]);
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [actionLoadingId, setActionLoadingId] = useState("");
+  const [clubId, setClubId] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
+  const handleJoin = async (e) => {
+    e.preventDefault();
 
-    async function loadClubs() {
-      try {
-        setLoading(true);
-        setErr("");
-
-        const res = await api.get("/clubs");
-        if (!alive) return;
-
-        setClubs(Array.isArray(res.data) ? res.data : []);
-      } catch (e) {
-        if (!alive) return;
-        setErr(e?.response?.data?.message || e.message || "Error al cargar clubs");
-      } finally {
-        if (alive) setLoading(false);
-      }
+    if (!clubId.trim()) {
+      toast.error("Debes ingresar un ID de club.");
+      return;
     }
 
-    loadClubs();
-
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  const enterClub = async (clubId) => {
     try {
-      setActionLoadingId(clubId);
+      setLoading(true);
 
-      const res = await api.get(`/clubs/${clubId}/me`);
-
-      setClubContext({
-        clubId,
-        role: res.data.role,
-      });
-
-      toast.success("Club seleccionado correctamente.");
-    } catch (e) {
-      const status = e?.response?.status;
-      const message =
-        e?.response?.data?.message || e.message || "No se pudo seleccionar el club";
-
-      if (status === 403) {
-        toast.info("No perteneces a este club todavía. Envía una solicitud para unirte.");
-        return;
-      }
-
-      toast.error(message);
-    } finally {
-      setActionLoadingId("");
-    }
-  };
-
-  const joinClub = async (clubId) => {
-    try {
-      setActionLoadingId(clubId);
-
-      await requestJoinClub(clubId);
+      await requestJoinClub(clubId.trim());
 
       toast.success("Solicitud enviada correctamente.");
+      setClubId("");
     } catch (e) {
       const message =
-        e?.response?.data?.message || e.message || "No se pudo enviar la solicitud";
+        e?.response?.data?.message ||
+        e.message ||
+        "No se pudo enviar la solicitud";
+
       toast.error(message);
     } finally {
-      setActionLoadingId("");
+      setLoading(false);
     }
   };
-
-  if (loading) {
-    return <div className="p-6 text-fifa-mute">Cargando clubs...</div>;
-  }
-
-  if (err) {
-    return <div className="p-6 text-red-400">Error: {err}</div>;
-  }
 
   return (
     <div className="min-h-screen bg-fifa-radial">
-      <div className="mx-auto max-w-6xl px-4 py-8 space-y-6">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-bold text-fifa-text">Clubs</h1>
+      <div className="mx-auto max-w-xl px-4 py-10 space-y-6">
+
+        {/* HEADER */}
+        <div className="space-y-1 text-center">
+          <h1 className="text-3xl font-bold text-fifa-text">
+            Unirse a club
+          </h1>
+
           <p className="text-fifa-mute">
-            Puedes entrar a un club si ya perteneces a él, o enviar una solicitud para unirte.
+            Ingresa el ID del club al que deseas solicitar ingreso.
           </p>
         </div>
 
-        {clubs.length === 0 ? (
-          <div className="rounded-xl border border-fifa-line bg-fifa-panel/80 p-5 text-fifa-mute">
-            No hay clubs disponibles.
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {clubs.map((c) => {
-              const isBusy = actionLoadingId === c._id;
+        {/* CARD */}
+        <div className="rounded-2xl border border-fifa-line bg-fifa-card shadow-glow p-6">
 
-              return (
-                <div
-                  key={c._id}
-                  className="rounded-2xl border border-fifa-line bg-fifa-card shadow-glow p-5"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-lg font-semibold text-fifa-text">
-                        {c.name}
-                      </div>
-                      <div className="text-sm text-fifa-mute">{c.country}</div>
-                    </div>
+          <form onSubmit={handleJoin} className="space-y-4">
 
-                    <div className="text-xs px-2 py-1 rounded-full border border-fifa-line text-fifa-mute">
-                      FIFA PRO
-                    </div>
-                  </div>
+            <div className="space-y-2">
+              <label className="text-sm text-fifa-mute">
+                ID del club
+              </label>
 
-                  <div className="my-4 h-px bg-fifa-line" />
+              <input
+                type="text"
+                value={clubId}
+                onChange={(e) => setClubId(e.target.value)}
+                placeholder="Ej: 664b4a8f4f5b3c0012ab34cd"
+                className="
+                  w-full rounded-xl px-4 py-3
+                  bg-black/30 text-fifa-text
+                  border border-fifa-line
+                  focus:outline-none
+                  focus:border-fifa-blue
+                "
+              />
+            </div>
 
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => enterClub(c._id)}
-                      disabled={isBusy}
-                      className="
-                        w-full rounded-xl px-4 py-2.5 text-sm font-semibold
-                        bg-fifa-blue text-white
-                        hover:opacity-90 active:opacity-80
-                        shadow-neon disabled:opacity-60
-                      "
-                    >
-                      {isBusy ? "Procesando..." : "Entrar si ya pertenezco"}
-                    </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="
+                w-full rounded-xl px-4 py-3
+                text-sm font-semibold
+                bg-fifa-blue text-white
+                hover:opacity-90 active:opacity-80
+                shadow-neon disabled:opacity-60
+              "
+            >
+              {loading ? "Enviando..." : "Solicitar ingreso"}
+            </button>
 
-                    <button
-                      type="button"
-                      onClick={() => joinClub(c._id)}
-                      disabled={isBusy}
-                      className="
-                        w-full rounded-xl px-4 py-2.5 text-sm font-semibold
-                        bg-white/5 text-fifa-text
-                        border border-fifa-line
-                        hover:border-fifa-blue hover:bg-white/10
-                        disabled:opacity-60
-                      "
-                    >
-                      {isBusy ? "Procesando..." : "Solicitar unirme"}
-                    </button>
-                  </div>
+          </form>
 
-                  <p className="mt-3 text-xs text-fifa-mute">
-                    Si ya eres miembro, usa “Entrar”. Si aún no perteneces, usa “Solicitar unirme”.
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        )}
+          <p className="mt-4 text-xs text-fifa-mute text-center">
+            El administrador del club deberá aprobar tu solicitud.
+          </p>
+
+        </div>
       </div>
     </div>
   );

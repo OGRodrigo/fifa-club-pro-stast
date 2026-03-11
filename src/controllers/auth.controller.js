@@ -26,7 +26,11 @@ function normalizePlatform(value) {
   const raw = String(value || "").trim().toUpperCase();
 
   if (["PS", "PS4", "PS5", "PLAYSTATION"].includes(raw)) return "PS";
-  if (["XBOX", "XBOX ONE", "XBOX SERIES", "XBOX SERIES X", "XBOX SERIES S"].includes(raw)) return "XBOX";
+  if (
+    ["XBOX", "XBOX ONE", "XBOX SERIES", "XBOX SERIES X", "XBOX SERIES S"].includes(raw)
+  ) {
+    return "XBOX";
+  }
   if (["PC"].includes(raw)) return "PC";
 
   return raw;
@@ -47,11 +51,27 @@ const register = async (req, res) => {
       });
     }
 
+    const usernameNorm = String(username).trim();
     const emailNorm = String(email).trim().toLowerCase();
 
-    const exists = await User.findOne({ email: emailNorm }).select("_id");
-    if (exists) {
+    const existsByEmail = await User.findOne({ email: emailNorm }).select("_id");
+    if (existsByEmail) {
       return res.status(409).json({ message: "Email ya registrado" });
+    }
+
+    /**
+     * username repetido sin distinguir mayúsculas/minúsculas
+     * Ejemplo:
+     * - Rodrigo
+     * - rodrigo
+     * => se consideran repetidos
+     */
+    const existsByUsername = await User.findOne({
+      username: { $regex: `^${usernameNorm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" },
+    }).select("_id");
+
+    if (existsByUsername) {
+      return res.status(409).json({ message: "Username ya registrado" });
     }
 
     const passwordHash = await bcrypt.hash(String(password), 10);
@@ -65,7 +85,7 @@ const register = async (req, res) => {
     }
 
     const user = await User.create({
-      username: String(username).trim(),
+      username: usernameNorm,
       email: emailNorm,
       passwordHash,
       gamerTag: String(gamerTag).trim(),
@@ -86,6 +106,22 @@ const register = async (req, res) => {
     });
   } catch (err) {
     console.error("register ERROR:", err);
+
+    /**
+     * Fallback por si Mongo lanza duplicate key error
+     */
+    if (err?.code === 11000) {
+      if (err?.keyPattern?.email) {
+        return res.status(409).json({ message: "Email ya registrado" });
+      }
+
+      if (err?.keyPattern?.username) {
+        return res.status(409).json({ message: "Username ya registrado" });
+      }
+
+      return res.status(409).json({ message: "Ya existe un registro duplicado" });
+    }
+
     return res.status(500).json({
       message: err.message || "Error en register",
     });
@@ -121,11 +157,9 @@ const login = async (req, res) => {
       return res.status(401).json({ message: "Credenciales inválidas" });
     }
 
-    const token = jwt.sign(
-      { sub: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = jwt.sign({ sub: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
 
     const clubContext = await buildClubContext(user._id);
 
@@ -151,7 +185,7 @@ const login = async (req, res) => {
 
 /**
  * =========================
- * GET /auth/me (PROTEGIDO)
+ * GET /auth/me
  * =========================
  */
 const me = async (req, res) => {

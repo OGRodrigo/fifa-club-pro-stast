@@ -447,88 +447,58 @@ export default function MemberStats() {
         ) : null}
       </div>
 
-      {/* RESUMEN SUPERIOR */}
-      <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Resumen superior
-          </div>
-
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
-            <TopSummaryItem
-              label="Jugador referencia"
-              value={
-                stats.bestScorer
-                  ? stats.bestScorer.gamerTag || stats.bestScorer.username
-                  : "—"
-              }
-              tone="text-yellow-300"
-            />
-
-            <TopSummaryItem
-              label="Más partidos"
-              value={
-                stats.mostPlayed
-                  ? stats.mostPlayed.gamerTag || stats.mostPlayed.username
-                  : "—"
-              }
-              tone="text-emerald-300"
-            />
-
-            <TopSummaryItem
-              label="Mejor rating"
-              value={
-                stats.bestRated
-                  ? stats.bestRated.gamerTag || stats.bestRated.username
-                  : "—"
-              }
-              tone="text-sky-300"
-            />
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <QuickInfoCard label="Miembros" value={stats.totalMembers} />
-            <QuickInfoCard label="PJ sumados" value={stats.totalPlayed} />
-            <QuickInfoCard
-              label="Contrib. total"
-              value={stats.totalGoals + stats.totalAssists}
-            />
-            <QuickInfoCard
-              label="Rating medio"
-              value={stats.avgTeamRating || "—"}
-            />
-          </div>
+            {/* RESUMEN SUPERIOR */}
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+          Resumen 
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Estado de gestión
-          </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <TopSummaryItem
+            label="Jugador referencia"
+            value={
+              stats.bestScorer
+                ? stats.bestScorer.gamerTag || stats.bestScorer.username
+                : "—"
+            }
+            tone="text-yellow-300"
+          />
 
-          <div className="mt-4 space-y-3">
-            <StatusRow
-              label="Cambio de rol"
-              value={isAdmin ? "Disponible" : "Solo admin"}
-              good={isAdmin}
-            />
-            <StatusRow
-              label="Eliminar miembro"
-              value={isAdmin ? "Disponible" : "Solo admin"}
-              good={isAdmin}
-            />
-            <StatusRow
-              label="Acceso a estadísticas"
-              value="Disponible"
-              good={true}
-            />
-            <StatusRow
-              label="Carga actual"
-              value={loading ? "Actualizando..." : "Lista"}
-              good={!loading}
-            />
-          </div>
+          <TopSummaryItem
+            label="Más partidos"
+            value={
+              stats.mostPlayed
+                ? stats.mostPlayed.gamerTag || stats.mostPlayed.username
+                : "—"
+            }
+            tone="text-emerald-300"
+          />
+
+          <TopSummaryItem
+            label="Mejor rating"
+            value={
+              stats.bestRated
+                ? stats.bestRated.gamerTag || stats.bestRated.username
+                : "—"
+            }
+            tone="text-sky-300"
+          />
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <QuickInfoCard label="Miembros" value={stats.totalMembers} />
+          <QuickInfoCard label="PJ sumados" value={stats.totalPlayed} />
+          <QuickInfoCard
+            label="Contrib. total"
+            value={stats.totalGoals + stats.totalAssists}
+          />
+          <QuickInfoCard
+            label="Rating medio"
+            value={stats.avgTeamRating || "—"}
+          />
         </div>
       </div>
+      
 
       {/* KPIS */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
