@@ -226,34 +226,40 @@ src
 ## Frontend
 
 
-src
-├ api
-│ ├ client.js
-│ ├ auth.js
-│ └ clubs.js
-│
-├ auth
-│ ├ AuthContext.jsx
-│ ├ ProtectedRoute.jsx
-│ └ sessionManager.js
-│
-├ components
-│ └ FifaLoader.jsx
-│
-├ pages
-│ ├ Login.jsx
-│ ├ Register.jsx
-│ ├ Clubs.jsx
-│ ├ CreateClub.jsx
-│ ├ JoinRequests.jsx
-│ ├ MemberStats.jsx
-│ ├ League.jsx
-│ └ Dashboard.jsx
-│
-├ ui
-│ └ ToastContext.jsx
-│
-└ App.jsx
+fifa-club-pro-frontend/
+├─ public/
+├─ src/
+│  ├─ api/
+│  ├─ auth/
+│  ├─ components/
+│  ├─ layout/
+│  ├─ pages/
+│  │  ├─ home/
+│  │  ├─ ClubAnalytics.jsx
+│  │  ├─ ClubDetail.jsx
+│  │  ├─ Clubs.jsx
+│  │  ├─ CreateClub.jsx
+│  │  ├─ CreateMatch.jsx
+│  │  ├─ EditMatchStats.jsx
+│  │  ├─ Home.jsx
+│  │  ├─ LeagueDashboard.jsx
+│  │  ├─ Login.jsx
+│  │  ├─ MatchDetail.jsx
+│  │  ├─ Matches.jsx
+│  │  ├─ MemberDetail.jsx
+│  │  ├─ MemberStats.jsx
+│  │  ├─ Register.jsx
+│  │  ├─ dashboard.jsx
+│  │  └─ joinRequests.jsx
+│  ├─ routes/
+│  ├─ season/
+│  ├─ ui/
+│  ├─ App.jsx
+│  ├─ index.css
+│  └─ main.jsx
+├─ index.html
+├─ package.json
+└─ vite.config.js
 
 
 ---
