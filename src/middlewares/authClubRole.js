@@ -1,42 +1,47 @@
+const mongoose = require("mongoose");
 const Club = require("../models/Club");
 
 /**
- * Middleware:
- * valida que el usuario autenticado pertenezca al club
- * y que tenga uno de los roles permitidos.
+ * =====================================================
+ * requireClubRole
+ * -----------------------------------------------------
+ * Valida:
+ * - usuario autenticado
+ * - club existente
+ * - pertenencia al club
+ * - rol permitido
  *
  * Uso:
- * requireClubRole(["admin"])
- * requireClubRole(["admin", "captain"])
+ *   requireClubRole(["admin"])
+ *   requireClubRole(["admin", "captain"])
+ * =====================================================
  */
 function requireClubRole(allowedRoles = []) {
   return async (req, res, next) => {
     try {
-      const { clubId } = req.params;
-
-      // Compatibilidad con distintas formas del user id
-      const userId = req.user?.sub || req.user?.id || req.user?._id;
+      const userId = req.user?.id;
+      const clubId = req.params?.clubId;
 
       if (!userId) {
         return res.status(401).json({
-          message: "Usuario no autenticado",
+          message: "No autenticado",
         });
       }
 
       if (!clubId) {
         return res.status(400).json({
-          message: "Falta clubId en la ruta",
+          message: "clubId es requerido",
         });
       }
 
-      if (!Array.isArray(allowedRoles) || allowedRoles.length === 0) {
-        return res.status(500).json({
-          message: "Configuración inválida de roles permitidos",
+      // ✅ validar ObjectId antes de consultar Mongo
+      if (!mongoose.Types.ObjectId.isValid(clubId)) {
+        return res.status(400).json({
+          message: "ID inválido",
         });
       }
 
-      const club = await Club.findById(clubId).select("members");
-
+      const club = await Club.findById(clubId).select("_id members");
       if (!club) {
         return res.status(404).json({
           message: "Club no encontrado",
@@ -44,7 +49,7 @@ function requireClubRole(allowedRoles = []) {
       }
 
       const membership = club.members.find(
-        (member) => String(member.user) === String(userId)
+        (m) => String(m.user) === String(userId)
       );
 
       if (!membership) {
@@ -53,22 +58,23 @@ function requireClubRole(allowedRoles = []) {
         });
       }
 
-      if (!allowedRoles.includes(membership.role)) {
+      if (
+        Array.isArray(allowedRoles) &&
+        allowedRoles.length > 0 &&
+        !allowedRoles.includes(membership.role)
+      ) {
         return res.status(403).json({
-          message: "No tienes permisos para realizar esta acción",
-          requiredRoles: allowedRoles,
-          currentRole: membership.role,
+          message: "No autorizado para esta acción",
         });
       }
 
-      // Contexto útil para controladores posteriores
+      req.club = club;
       req.clubMembership = membership;
-      req.clubRole = membership.role;
-      req.clubId = clubId;
 
       next();
     } catch (error) {
       console.error("ERROR requireClubRole:", error);
+
       return res.status(500).json({
         message: "Error validando permisos del club",
       });

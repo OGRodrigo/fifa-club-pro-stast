@@ -61,13 +61,4 @@ const UserSchema = new mongoose.Schema(
   }
 );
 
-/**
- * Índices explícitos
- * -----------------------------------------------------
- * Aunque "unique: true" ya ayuda, dejar los índices
- * explícitos hace más claro el contrato del modelo.
- */
-UserSchema.index({ username: 1 }, { unique: true });
-UserSchema.index({ email: 1 }, { unique: true });
-
 module.exports = mongoose.models.User || mongoose.model("User", UserSchema);

@@ -51,10 +51,5 @@ const clubSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-/**
- * Índice único para nombre del club
- */
-clubSchema.index({ name: 1 }, { unique: true });
-
 module.exports =
   mongoose.models.Club || mongoose.model("Club", clubSchema);

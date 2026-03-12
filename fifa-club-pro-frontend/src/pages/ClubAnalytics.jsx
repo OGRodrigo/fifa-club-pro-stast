@@ -2,6 +2,21 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { api } from "../api/client";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+} from "recharts";
 
 /**
  * =====================================================
@@ -12,8 +27,21 @@ import { api } from "../api/client";
  * Fuentes usadas:
  * - GET /clubs/:clubId/members
  * - GET /matches?limit=100
+ *
+ * Mejora visual:
+ * - gráficos de resultados
+ * - comparación goles a favor / en contra
+ * - evolución reciente
+ * - top contribución del plantel
  * =====================================================
  */
+
+const RESULT_COLORS = {
+  W: "#34d399",
+  D: "#fbbf24",
+  L: "#f87171",
+};
+
 export default function ClubAnalytics() {
   const navigate = useNavigate();
   const { clubContext } = useAuth();
@@ -303,6 +331,44 @@ export default function ClubAnalytics() {
             ).toFixed(2)
           );
 
+    const topContribution = [...memberRows]
+      .sort((a, b) => {
+        if (b.contrib !== a.contrib) return b.contrib - a.contrib;
+        if (b.goals !== a.goals) return b.goals - a.goals;
+        return b.assists - a.assists;
+      })
+      .slice(0, 6)
+      .map((row) => ({
+        name: row.gamerTag || row.username || "—",
+        goles: row.goals,
+        asistencias: row.assists,
+        contribucion: row.contrib,
+      }));
+
+    const resultsPieData = [
+      { name: "Victorias", value: wins, color: RESULT_COLORS.W },
+      { name: "Empates", value: draws, color: RESULT_COLORS.D },
+      { name: "Derrotas", value: losses, color: RESULT_COLORS.L },
+    ].filter((item) => item.value > 0);
+
+    const goalsComparisonData = [
+      {
+        name: "Club",
+        golesAFavor: goalsFor,
+        golesEnContra: goalsAgainst,
+      },
+    ];
+
+    const recentTrendData = [...allClubMatches]
+      .slice(0, 8)
+      .reverse()
+      .map((row, index) => ({
+        partido: `P${index + 1}`,
+        gf: row.gf,
+        ga: row.ga,
+        puntos: row.result === "W" ? 3 : row.result === "D" ? 1 : 0,
+      }));
+
     return {
       totalMembers,
       adminCount,
@@ -325,6 +391,10 @@ export default function ClubAnalytics() {
       leaders,
       recentMatches: allClubMatches.slice(0, 8),
       recentFiveMatches: recentFive,
+      topContribution,
+      resultsPieData,
+      goalsComparisonData,
+      recentTrendData,
     };
   }, [members, matches, clubId]);
 
@@ -491,52 +561,167 @@ export default function ClubAnalytics() {
         />
       </div>
 
+      {/* GRÁFICOS */}
       <div className="grid gap-4 xl:grid-cols-2">
-        <ComparisonCard
-          title="Comparación ataque vs defensa"
-          leftLabel="Goles a favor"
-          leftValue={analytics.goalsFor}
-          rightLabel="Goles en contra"
-          rightValue={analytics.goalsAgainst}
-          leftColor="bg-emerald-400"
-          rightColor="bg-red-400"
-        />
+        <ChartCard
+          title="Distribución de resultados"
+          subtitle="Victorias, empates y derrotas del club"
+        >
+          {analytics.resultsPieData.length === 0 ? (
+            <ChartEmpty text="Sin datos suficientes para mostrar el gráfico." />
+          ) : (
+            <div className="h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={analytics.resultsPieData}
+                    dataKey="value"
+                    nameKey="name"
+                    outerRadius={100}
+                    innerRadius={55}
+                    paddingAngle={3}
+                    label
+                  >
+                    {analytics.resultsPieData.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      background: "#0f172a",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: "12px",
+                      color: "#fff",
+                    }}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </ChartCard>
 
-        <ComparisonCard
-          title="Comparación victorias vs derrotas"
-          leftLabel="Victorias"
-          leftValue={analytics.wins}
-          rightLabel="Derrotas"
-          rightValue={analytics.losses}
-          leftColor="bg-sky-400"
-          rightColor="bg-orange-400"
-        />
+        <ChartCard
+          title="Ataque vs defensa"
+          subtitle="Comparación global de goles a favor y en contra"
+        >
+          <div className="h-[320px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={analytics.goalsComparisonData} barGap={20}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                <XAxis dataKey="name" stroke="#94a3b8" />
+                <YAxis stroke="#94a3b8" />
+                <Tooltip
+                  contentStyle={{
+                    background: "#0f172a",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "12px",
+                    color: "#fff",
+                  }}
+                />
+                <Legend />
+                <Bar dataKey="golesAFavor" name="Goles a favor" fill="#34d399" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="golesEnContra" name="Goles en contra" fill="#f87171" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </ChartCard>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-        <div className="mb-4">
-          <h2 className="text-xl font-semibold">Forma reciente del club</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Lectura rápida de los últimos 5 partidos del equipo.
-          </p>
-        </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <ChartCard
+          title="Evolución reciente"
+          subtitle="Últimos 8 partidos: goles a favor, en contra y puntos"
+        >
+          {analytics.recentTrendData.length === 0 ? (
+            <ChartEmpty text="Aún no hay partidos para mostrar tendencia." />
+          ) : (
+            <div className="h-[340px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={analytics.recentTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                  <XAxis dataKey="partido" stroke="#94a3b8" />
+                  <YAxis stroke="#94a3b8" />
+                  <Tooltip
+                    contentStyle={{
+                      background: "#0f172a",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: "12px",
+                      color: "#fff",
+                    }}
+                  />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="gf"
+                    name="GF"
+                    stroke="#34d399"
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="ga"
+                    name="GC"
+                    stroke="#f87171"
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="puntos"
+                    name="Puntos"
+                    stroke="#60a5fa"
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </ChartCard>
 
-        {analytics.recentFiveMatches.length === 0 ? (
-          <EmptyState
-            title="Sin forma reciente"
-            text="El club aún no tiene partidos recientes registrados."
-          />
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            {analytics.recentFiveMatches.map((match) => (
-              <ClubRecentMatchCard
-                key={match.matchId}
-                match={match}
-                onOpen={() => navigate(`/matches/${match.matchId}`)}
-              />
-            ))}
-          </div>
-        )}
+        <ChartCard
+          title="Top contribución ofensiva"
+          subtitle="Goles y asistencias del plantel"
+        >
+          {analytics.topContribution.length === 0 ? (
+            <ChartEmpty text="No hay estadísticas individuales aún." />
+          ) : (
+            <div className="h-[340px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={analytics.topContribution}
+                  layout="vertical"
+                  margin={{ top: 10, right: 20, left: 20, bottom: 10 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                  <XAxis type="number" stroke="#94a3b8" />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={90}
+                    stroke="#94a3b8"
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: "#0f172a",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: "12px",
+                      color: "#fff",
+                    }}
+                  />
+                  <Legend />
+                  <Bar dataKey="goles" name="Goles" fill="#34d399" radius={[0, 8, 8, 0]} />
+                  <Bar dataKey="asistencias" name="Asistencias" fill="#60a5fa" radius={[0, 8, 8, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </ChartCard>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-4">
@@ -595,6 +780,32 @@ export default function ClubAnalytics() {
             navigate(`/club/members-stats/${analytics.leaders.played.userId}`)
           }
         />
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold">Forma reciente del club</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Lectura rápida de los últimos 5 partidos del equipo.
+          </p>
+        </div>
+
+        {analytics.recentFiveMatches.length === 0 ? (
+          <EmptyState
+            title="Sin forma reciente"
+            text="El club aún no tiene partidos recientes registrados."
+          />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            {analytics.recentFiveMatches.map((match) => (
+              <ClubRecentMatchCard
+                key={match.matchId}
+                match={match}
+                onOpen={() => navigate(`/matches/${match.matchId}`)}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
@@ -838,52 +1049,24 @@ function RoleSummaryCard({ title, count, colorClass, textClass, max }) {
   );
 }
 
-function ComparisonCard({
-  title,
-  leftLabel,
-  leftValue,
-  rightLabel,
-  rightValue,
-  leftColor,
-  rightColor,
-}) {
-  const total = Number(leftValue || 0) + Number(rightValue || 0);
-  const leftWidth = total > 0 ? (Number(leftValue || 0) / total) * 100 : 50;
-  const rightWidth = total > 0 ? (Number(rightValue || 0) / total) * 100 : 50;
-
+function ChartCard({ title, subtitle, children }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
       <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
         {title}
       </div>
+      {subtitle ? (
+        <div className="mt-1 text-sm text-slate-400">{subtitle}</div>
+      ) : null}
+      <div className="mt-4">{children}</div>
+    </div>
+  );
+}
 
-      <div className="mt-4 space-y-4">
-        <div>
-          <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="text-slate-300">{leftLabel}</span>
-            <span className="font-semibold text-slate-100">{leftValue}</span>
-          </div>
-          <div className="h-3 w-full rounded-full bg-black/30 overflow-hidden">
-            <div
-              className={`h-full ${leftColor}`}
-              style={{ width: `${leftWidth}%` }}
-            />
-          </div>
-        </div>
-
-        <div>
-          <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="text-slate-300">{rightLabel}</span>
-            <span className="font-semibold text-slate-100">{rightValue}</span>
-          </div>
-          <div className="h-3 w-full rounded-full bg-black/30 overflow-hidden">
-            <div
-              className={`h-full ${rightColor}`}
-              style={{ width: `${rightWidth}%` }}
-            />
-          </div>
-        </div>
-      </div>
+function ChartEmpty({ text }) {
+  return (
+    <div className="flex h-[320px] items-center justify-center rounded-xl border border-dashed border-white/10 bg-black/20 text-sm text-slate-400">
+      {text}
     </div>
   );
 }
