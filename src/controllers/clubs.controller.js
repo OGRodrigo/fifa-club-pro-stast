@@ -199,18 +199,71 @@ const updateClub = async (req, res) => {
 
 /**
  * DELETE /clubs/:clubId
+ * -----------------------------------------------------
+ * Opción B: eliminación en cascada
+ * - elimina el club
+ * - elimina todos los partidos asociados al club
+ * -----------------------------------------------------
+ * Requisitos:
+ * - auth + requireClubRole(["admin"]) ya protegen la ruta
+ * - aquí además validamos nuevamente por defensa
+ * =====================================================
  */
 const deleteClub = async (req, res) => {
   try {
     const { clubId } = req.params;
+    const actorUserId = req.user?.id;
 
-    const club = await Club.findByIdAndDelete(clubId);
-    if (!club) return res.status(404).json({ message: "Club no encontrado" });
+    if (!clubId) {
+      return res.status(400).json({ message: "clubId es obligatorio" });
+    }
 
-    return res.status(200).json({ message: "Club eliminado correctamente" });
+    if (!actorUserId) {
+      return res.status(401).json({ message: "No autenticado" });
+    }
+
+    const club = await Club.findById(clubId);
+
+    if (!club) {
+      return res.status(404).json({ message: "Club no encontrado" });
+    }
+
+    // Defensa extra: confirmar que el actor siga siendo admin real del club
+    const actorMembership = Array.isArray(club.members)
+      ? club.members.find(
+          (member) => String(member.user) === String(actorUserId)
+        )
+      : null;
+
+    if (!actorMembership || actorMembership.role !== "admin") {
+      return res.status(403).json({
+        message: "Solo el admin del club puede eliminarlo",
+      });
+    }
+
+    // 1) contar partidos asociados
+    const linkedMatchesCount = await Match.countDocuments({
+      $or: [{ homeClub: clubId }, { awayClub: clubId }],
+    });
+
+    // 2) eliminar partidos asociados
+    const deletedMatchesResult = await Match.deleteMany({
+      $or: [{ homeClub: clubId }, { awayClub: clubId }],
+    });
+
+    // 3) eliminar club
+    await Club.findByIdAndDelete(clubId);
+
+    return res.status(200).json({
+      message: "Club y partidos asociados eliminados correctamente",
+      deletedClubId: clubId,
+      deletedMatches: deletedMatchesResult?.deletedCount || linkedMatchesCount || 0,
+    });
   } catch (error) {
     console.error("deleteClub ERROR:", error);
-    return res.status(400).json({ message: "ID inválido" });
+    return res.status(500).json({
+      message: "Error al eliminar club y sus datos asociados",
+    });
   }
 };
 

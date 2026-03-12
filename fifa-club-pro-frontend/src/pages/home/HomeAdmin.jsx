@@ -1,12 +1,13 @@
-// src/pages/home/HomeAdmin.jsx
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { api } from "../../api/client";
 import { useNavigate } from "react-router-dom";
+import { useToast } from "../../ui/ToastContext";
 
 export default function HomeAdmin() {
   const { clubContext, clearClubContext } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
 
   const clubId = clubContext?.clubId || "";
   const role = clubContext?.role || "";
@@ -118,45 +119,6 @@ export default function HomeAdmin() {
     };
   }, [clubId, season]);
 
-  // =========================
-  // Eliminar club
-  // =========================
-  async function handleDeleteClub() {
-    if (!isAdmin) {
-      setErr("Solo el administrador puede eliminar el club.");
-      return;
-    }
-
-    if (!clubId) {
-      setErr("No se encontró el club activo.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "¿Seguro que deseas eliminar este club?\n\nEsta acción eliminará el club completo."
-    );
-
-    if (!confirmed) return;
-
-    try {
-      setDeletingClub(true);
-      setErr("");
-
-      await api.delete(`/clubs/${clubId}`);
-
-      clearClubContext();
-      navigate("/home", { replace: true });
-    } catch (e) {
-      setErr(
-        e?.response?.data?.message ||
-          e.message ||
-          "No se pudo eliminar el club."
-      );
-    } finally {
-      setDeletingClub(false);
-    }
-  }
-
   const overall = summary?.overall || null;
   const averages = summary?.averages || null;
   const streaks = summary?.streaks || null;
@@ -174,6 +136,43 @@ export default function HomeAdmin() {
   const topAssists = Array.isArray(lb?.topAssists) ? lb.topAssists : [];
   const mvpSeason = lb?.mvpSeason || null;
   const notes = lb?.notes || {};
+
+  async function handleDeleteClub() {
+    if (!isAdmin) {
+      toast.error("Solo el admin puede eliminar el club.");
+      return;
+    }
+
+    if (!clubId) {
+      toast.error("No hay club activo.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+  "Vas a eliminar el club y TODOS sus partidos, estadísticas, lineups y datos asociados. Esta acción no se puede deshacer. ¿Deseas continuar?"
+);
+
+    if (!confirmed) return;
+
+    try {
+      setDeletingClub(true);
+
+      await api.delete(`/clubs/${clubId}`);
+
+      clearClubContext();
+      toast.success("Club eliminado correctamente.");
+      navigate("/clubs", { replace: true });
+    } catch (e) {
+      const message =
+        e?.response?.data?.message ||
+        e.message ||
+        "No se pudo eliminar el club";
+
+      toast.error(message);
+    } finally {
+      setDeletingClub(false);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -197,23 +196,36 @@ export default function HomeAdmin() {
             </div>
           </div>
 
-          <div className="w-full lg:w-[220px]">
-            <div className="mb-2 text-xs text-[var(--fifa-mute)]">Temporada</div>
-            <select
-              value={season}
-              onChange={(e) => setSeason(e.target.value)}
-              className="w-full rounded-xl bg-black/30 p-3 text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)]"
-            >
-              {seasons.length === 0 ? (
-                <option value={season}>{season || "Sin temporadas"}</option>
-              ) : (
-                seasons.map((s) => (
-                  <option key={s} value={String(s)}>
-                    {s}
-                  </option>
-                ))
-              )}
-            </select>
+          <div className="w-full lg:w-[260px] space-y-3">
+            <div>
+              <div className="mb-2 text-xs text-[var(--fifa-mute)]">Temporada</div>
+              <select
+                value={season}
+                onChange={(e) => setSeason(e.target.value)}
+                className="w-full rounded-xl bg-black/30 p-3 text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)]"
+              >
+                {seasons.length === 0 ? (
+                  <option value={season}>{season || "Sin temporadas"}</option>
+                ) : (
+                  seasons.map((s) => (
+                    <option key={s} value={String(s)}>
+                      {s}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+
+            {isAdmin ? (
+              <button
+                type="button"
+                onClick={handleDeleteClub}
+                disabled={deletingClub}
+                className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-500 disabled:opacity-60"
+              >
+                {deletingClub ? "Eliminando club..." : "Eliminar club"}
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -501,26 +513,6 @@ export default function HomeAdmin() {
             onClick={() => navigate("/club/analytics")}
           />
         </div>
-
-        {isAdmin ? (
-          <div className="mt-5 rounded-xl border border-[var(--fifa-danger)]/30 bg-[rgba(255,60,60,0.08)] p-4">
-            <div className="text-sm font-extrabold text-[var(--fifa-danger)]">
-              Zona sensible
-            </div>
-            <div className="mt-1 text-sm text-[var(--fifa-mute)]">
-              Esta acción elimina el club completo. Solo el administrador puede hacerlo.
-            </div>
-
-            <button
-              type="button"
-              onClick={handleDeleteClub}
-              disabled={deletingClub}
-              className="mt-4 rounded-lg bg-[var(--fifa-danger)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-            >
-              {deletingClub ? "Eliminando club..." : "Eliminar club"}
-            </button>
-          </div>
-        ) : null}
       </div>
     </div>
   );
