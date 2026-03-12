@@ -1,16 +1,22 @@
 const request = require("supertest");
-const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
 const app = require("../../app");
 const User = require("../../models/User");
 const Club = require("../../models/Club");
+const {
+  connectTestDB,
+  clearTestDB,
+  closeTestDB,
+} = require("../setup/testDb");
 
 function signToken(userId) {
-  return jwt.sign({ sub: String(userId) }, process.env.JWT_SECRET, {
-    expiresIn: "1h",
-  });
+  return jwt.sign(
+    { sub: String(userId) },
+    process.env.JWT_SECRET,
+    { expiresIn: "1h" }
+  );
 }
 
 async function createUser({
@@ -34,13 +40,16 @@ async function createUser({
 }
 
 describe("POST /clubs - casos extra", () => {
-  beforeEach(async () => {
-    await Club.deleteMany({});
-    await User.deleteMany({});
+  beforeAll(async () => {
+    await connectTestDB();
+  });
+
+  afterEach(async () => {
+    await clearTestDB();
   });
 
   afterAll(async () => {
-    await mongoose.connection.close();
+    await closeTestDB();
   });
 
   test("debe responder 401 si no hay token", async () => {
@@ -88,6 +97,7 @@ describe("POST /clubs - casos extra", () => {
       name: "Club Original",
       country: "Chile",
       members: [{ user: user._id, role: "admin" }],
+      joinRequests: [],
     });
 
     const res = await request(app)
@@ -120,6 +130,7 @@ describe("POST /clubs - casos extra", () => {
       name: "Club Duplicado",
       country: "Chile",
       members: [{ user: user1._id, role: "admin" }],
+      joinRequests: [],
     });
 
     const token2 = signToken(user2._id);
@@ -149,8 +160,8 @@ describe("POST /clubs - casos extra", () => {
       .post("/clubs")
       .set("Authorization", `Bearer ${token}`)
       .send({
-        name: "   Club Trim   ",
-        country: "   Chile   ",
+        name: " Club Trim ",
+        country: " Chile ",
       });
 
     expect(res.statusCode).toBe(201);

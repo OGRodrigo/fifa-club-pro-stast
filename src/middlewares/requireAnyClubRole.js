@@ -1,4 +1,4 @@
-const Club = require("../models/club");
+const Club = require("../models/Club");
 
 /**
  * Permite si el usuario es miembro de AL MENOS UNO
