@@ -1,4 +1,3 @@
-// src/pages/ClubAnalytics.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
@@ -13,8 +12,6 @@ import { api } from "../api/client";
  * Fuentes usadas:
  * - GET /clubs/:clubId/members
  * - GET /matches?limit=100
- *
- * 
  * =====================================================
  */
 export default function ClubAnalytics() {
@@ -106,7 +103,9 @@ export default function ClubAnalytics() {
       const ratings = [];
 
       for (const match of matches) {
-        const playerStats = Array.isArray(match?.playerStats) ? match.playerStats : [];
+        const playerStats = Array.isArray(match?.playerStats)
+          ? match.playerStats
+          : [];
 
         const row = playerStats.find((ps) => {
           const uid = (ps?.user?._id || ps?.user || "").toString();
@@ -218,7 +217,9 @@ export default function ClubAnalytics() {
       playedMatches > 0 ? Number((goalsFor / playedMatches).toFixed(2)) : 0;
 
     const avgGoalsAgainst =
-      playedMatches > 0 ? Number((goalsAgainst / playedMatches).toFixed(2)) : 0;
+      playedMatches > 0
+        ? Number((goalsAgainst / playedMatches).toFixed(2))
+        : 0;
 
     const pointsPerMatch =
       playedMatches > 0 ? Number((points / playedMatches).toFixed(2)) : 0;
@@ -227,10 +228,11 @@ export default function ClubAnalytics() {
       playedMatches > 0 ? Number(((wins / playedMatches) * 100).toFixed(1)) : 0;
 
     const recentFive = allClubMatches.slice(0, 5);
-    const recentFiveResults = recentFive.map((m) => m.result);
 
     const computeStreak = (results) => {
-      if (!results.length) return { label: "Sin racha", type: "neutral", count: 0 };
+      if (!results.length) {
+        return { label: "Sin racha", type: "neutral", count: 0 };
+      }
 
       const first = results[0];
       let count = 0;
@@ -240,8 +242,14 @@ export default function ClubAnalytics() {
         else break;
       }
 
-      if (first === "W") return { label: `${count} victoria(s) seguidas`, type: "win", count };
-      if (first === "L") return { label: `${count} derrota(s) seguidas`, type: "loss", count };
+      if (first === "W") {
+        return { label: `${count} victoria(s) seguidas`, type: "win", count };
+      }
+
+      if (first === "L") {
+        return { label: `${count} derrota(s) seguidas`, type: "loss", count };
+      }
+
       return { label: `${count} empate(s) seguidos`, type: "draw", count };
     };
 
@@ -279,7 +287,10 @@ export default function ClubAnalytics() {
         })[0] || null,
     };
 
-    const avgTeamRatingRows = memberRows.filter((m) => Number(m.avgRating || 0) > 0);
+    const avgTeamRatingRows = memberRows.filter(
+      (m) => Number(m.avgRating || 0) > 0
+    );
+
     const avgTeamRating =
       avgTeamRatingRows.length === 0
         ? 0
@@ -312,8 +323,6 @@ export default function ClubAnalytics() {
       winRate,
       streak,
       leaders,
-      recentResults,
-      recentFiveResults,
       recentMatches: allClubMatches.slice(0, 8),
       recentFiveMatches: recentFive,
     };
@@ -336,7 +345,9 @@ export default function ClubAnalytics() {
     return (
       <section className="space-y-4">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-          <div className="text-sm text-slate-300">Cargando analítica del club...</div>
+          <div className="text-sm text-slate-300">
+            Cargando analítica del club...
+          </div>
         </div>
       </section>
     );
@@ -344,7 +355,6 @@ export default function ClubAnalytics() {
 
   return (
     <section className="space-y-6">
-      {/* HEADER */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -382,7 +392,6 @@ export default function ClubAnalytics() {
         ) : null}
       </div>
 
-      {/* RESUMEN SUPERIOR */}
       <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -399,9 +408,7 @@ export default function ClubAnalytics() {
               label="Diferencia de gol"
               value={analytics.goalDifference}
               tone={
-                analytics.goalDifference >= 0
-                  ? "text-sky-300"
-                  : "text-red-300"
+                analytics.goalDifference >= 0 ? "text-sky-300" : "text-red-300"
               }
             />
             <TopSummaryItem
@@ -427,8 +434,16 @@ export default function ClubAnalytics() {
           </div>
 
           <div className="mt-4 space-y-3">
-            <StatusRow label="Win rate" value={`${analytics.winRate}%`} good={analytics.winRate >= 50} />
-            <StatusRow label="Puntos / partido" value={analytics.pointsPerMatch} good={analytics.pointsPerMatch >= 1.5} />
+            <StatusRow
+              label="Win rate"
+              value={`${analytics.winRate}%`}
+              good={analytics.winRate >= 50}
+            />
+            <StatusRow
+              label="Puntos / partido"
+              value={analytics.pointsPerMatch}
+              good={analytics.pointsPerMatch >= 1.5}
+            />
             <StatusRow
               label="Racha actual"
               value={analytics.streak.label}
@@ -443,7 +458,6 @@ export default function ClubAnalytics() {
         </div>
       </div>
 
-      {/* KPIS */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <KpiCard
           label="Miembros"
@@ -477,7 +491,28 @@ export default function ClubAnalytics() {
         />
       </div>
 
-      {/* FORMA RECIENTE */}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <ComparisonCard
+          title="Comparación ataque vs defensa"
+          leftLabel="Goles a favor"
+          leftValue={analytics.goalsFor}
+          rightLabel="Goles en contra"
+          rightValue={analytics.goalsAgainst}
+          leftColor="bg-emerald-400"
+          rightColor="bg-red-400"
+        />
+
+        <ComparisonCard
+          title="Comparación victorias vs derrotas"
+          leftLabel="Victorias"
+          leftValue={analytics.wins}
+          rightLabel="Derrotas"
+          rightValue={analytics.losses}
+          leftColor="bg-sky-400"
+          rightColor="bg-orange-400"
+        />
+      </div>
+
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <div className="mb-4">
           <h2 className="text-xl font-semibold">Forma reciente del club</h2>
@@ -504,7 +539,6 @@ export default function ClubAnalytics() {
         )}
       </div>
 
-      {/* LÍDERES */}
       <div className="grid gap-4 xl:grid-cols-4">
         <LeaderCard
           title="Máximo goleador"
@@ -563,7 +597,6 @@ export default function ClubAnalytics() {
         />
       </div>
 
-      {/* ROLES */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <div className="mb-4">
           <h2 className="text-xl font-semibold">Distribución del plantel</h2>
@@ -597,7 +630,6 @@ export default function ClubAnalytics() {
         </div>
       </div>
 
-      {/* ÚLTIMOS PARTIDOS */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -678,10 +710,6 @@ export default function ClubAnalytics() {
     </section>
   );
 }
-
-/* =====================================================
- * Helpers visuales
- * ===================================================== */
 
 function InfoBadge({ label, value }) {
   return (
@@ -790,13 +818,7 @@ function LeaderCard({
   );
 }
 
-function RoleSummaryCard({
-  title,
-  count,
-  colorClass,
-  textClass,
-  max,
-}) {
+function RoleSummaryCard({ title, count, colorClass, textClass, max }) {
   const safeCount = Number(count || 0);
   const safeMax = Math.max(Number(max || 1), 1);
   const width = Math.max(0, Math.min(100, (safeCount / safeMax) * 100));
@@ -811,6 +833,56 @@ function RoleSummaryCard({
           className={`h-full rounded-full ${colorClass}`}
           style={{ width: `${width}%` }}
         />
+      </div>
+    </div>
+  );
+}
+
+function ComparisonCard({
+  title,
+  leftLabel,
+  leftValue,
+  rightLabel,
+  rightValue,
+  leftColor,
+  rightColor,
+}) {
+  const total = Number(leftValue || 0) + Number(rightValue || 0);
+  const leftWidth = total > 0 ? (Number(leftValue || 0) / total) * 100 : 50;
+  const rightWidth = total > 0 ? (Number(rightValue || 0) / total) * 100 : 50;
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+        {title}
+      </div>
+
+      <div className="mt-4 space-y-4">
+        <div>
+          <div className="mb-2 flex items-center justify-between text-sm">
+            <span className="text-slate-300">{leftLabel}</span>
+            <span className="font-semibold text-slate-100">{leftValue}</span>
+          </div>
+          <div className="h-3 w-full rounded-full bg-black/30 overflow-hidden">
+            <div
+              className={`h-full ${leftColor}`}
+              style={{ width: `${leftWidth}%` }}
+            />
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between text-sm">
+            <span className="text-slate-300">{rightLabel}</span>
+            <span className="font-semibold text-slate-100">{rightValue}</span>
+          </div>
+          <div className="h-3 w-full rounded-full bg-black/30 overflow-hidden">
+            <div
+              className={`h-full ${rightColor}`}
+              style={{ width: `${rightWidth}%` }}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

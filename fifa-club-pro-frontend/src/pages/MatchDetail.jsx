@@ -77,10 +77,9 @@ export default function MatchDetail() {
     const status = match?.status || "played";
     const stadium = match?.stadium || "Sin estadio";
 
-    const date = match?.date
-      ? new Date(match.date).toLocaleDateString()
+        const date = match?.date
+      ? new Date(match.date).toLocaleString()
       : "—";
-
     const playerStats = Array.isArray(match?.playerStats)
       ? match.playerStats
       : [];
@@ -150,13 +149,13 @@ export default function MatchDetail() {
           <div className="text-sm text-[var(--fifa-danger)]">Error: {err}</div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate("/home")}
-          className="rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon transition"
-        >
-          Volver a home
-        </button>
+                    <button
+              type="button"
+              onClick={() => navigate("/matches")}
+              className="rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon transition"
+            >
+              Volver a partidos
+            </button>
       </div>
     );
   }

@@ -18,16 +18,21 @@ export default function JoinRequests() {
   const [actionLoading, setActionLoading] = useState("");
 
   async function loadRequests() {
-    if (!clubId) return;
+    if (!clubId) {
+      setRequests([]);
+      return;
+    }
 
     setLoading(true);
     setErr("");
 
     try {
       const res = await api.get(`/clubs/${clubId}/join-requests`);
-      setRequests(res.data?.joinRequests || []);
+      setRequests(Array.isArray(res.data?.requests) ? res.data.requests : []);
     } catch (e) {
-      setErr(e?.response?.data?.message || e.message || "Error cargando solicitudes");
+      setErr(
+        e?.response?.data?.message || e.message || "Error cargando solicitudes"
+      );
     } finally {
       setLoading(false);
     }
@@ -41,14 +46,15 @@ export default function JoinRequests() {
   async function resolveRequest(userId, action) {
     try {
       setActionLoading(userId);
+      setErr("");
 
       await api.put(`/clubs/${clubId}/join-requests/${userId}`, {
         action,
       });
 
       toast.success(
-        action === "approve"
-          ? "Solicitud aprobada correctamente."
+        action === "accept"
+          ? "Solicitud aceptada correctamente."
           : "Solicitud rechazada correctamente."
       );
 
@@ -56,6 +62,7 @@ export default function JoinRequests() {
     } catch (e) {
       const message =
         e?.response?.data?.message || e.message || "Error resolviendo solicitud";
+
       setErr(message);
       toast.error(message);
     } finally {
@@ -72,7 +79,8 @@ export default function JoinRequests() {
           </h1>
 
           <p className="mt-2 text-fifa-mute">
-            No autorizado. Solo <b>admin</b> o <b>captain</b> pueden revisar solicitudes.
+            No autorizado. Solo <b>admin</b> o <b>captain</b> pueden revisar
+            solicitudes.
           </p>
         </div>
       </div>
@@ -82,24 +90,38 @@ export default function JoinRequests() {
   return (
     <div className="space-y-6 p-6">
       <section className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-5">
-        <h1 className="text-3xl font-extrabold text-fifa-text">
-          Solicitudes de ingreso
-        </h1>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h1 className="text-3xl font-extrabold text-fifa-text">
+              Solicitudes de ingreso
+            </h1>
 
-        <p className="mt-2 text-fifa-mute">
-          Usuarios que quieren unirse al club.
-        </p>
+            <p className="mt-2 text-fifa-mute">
+              Aquí puedes aprobar o rechazar usuarios que quieren unirse al
+              club.
+            </p>
 
-        <div className="mt-2 text-sm text-fifa-mute">
-          Club: <b>{clubId}</b> · Rol: <b>{role}</b>
+            <div className="mt-3 text-sm text-fifa-mute">
+              Club: <b>{clubId}</b> · Rol: <b>{role}</b>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={loadRequests}
+            disabled={loading}
+            className="rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-fifa-text ring-1 ring-[var(--fifa-line)] transition hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon disabled:opacity-60"
+          >
+            {loading ? "Actualizando..." : "Recargar"}
+          </button>
         </div>
       </section>
 
-      {err && (
+      {err ? (
         <div className="rounded-xl bg-black/30 p-4 ring-1 ring-[var(--fifa-danger)] text-fifa-danger">
           {err}
         </div>
-      )}
+      ) : null}
 
       <section className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow">
         <div className="px-5 py-4 border-b border-[var(--fifa-line)]">
@@ -109,49 +131,62 @@ export default function JoinRequests() {
         </div>
 
         <div className="p-5">
-          {loading && <div className="text-fifa-mute">Cargando solicitudes...</div>}
+          {loading ? (
+            <div className="text-fifa-mute">Cargando solicitudes...</div>
+          ) : null}
 
-          {!loading && requests.length === 0 && (
-            <div className="text-fifa-mute">
-              No hay solicitudes pendientes.
+          {!loading && requests.length === 0 ? (
+            <div className="rounded-xl bg-black/20 p-4 ring-1 ring-[var(--fifa-line)] text-fifa-mute">
+              No hay solicitudes pendientes por revisar.
             </div>
-          )}
+          ) : null}
 
           <div className="space-y-3">
             {requests.map((r) => {
-              const user = r.user || {};
-              const userId = user._id;
+              const user = r?.user || {};
+              const userId = user?._id || "";
+              const isBusy = actionLoading === userId;
 
               return (
                 <div
-                  key={userId}
-                  className="flex items-center justify-between rounded-xl bg-black/20 p-4 ring-1 ring-[var(--fifa-line)]"
+                  key={userId || r?._id}
+                  className="flex flex-col gap-4 rounded-xl bg-black/20 p-4 ring-1 ring-[var(--fifa-line)] md:flex-row md:items-center md:justify-between"
                 >
                   <div>
                     <div className="font-semibold text-fifa-text">
-                      {user.gamerTag || user.username}
+                      {user.gamerTag || user.username || "Usuario"}
                     </div>
 
                     <div className="text-sm text-fifa-mute">
-                      @{user.username} · {user.platform} · {user.country}
+                      @{user.username || "sin-username"} · {user.platform || "—"}{" "}
+                      · {user.country || "—"}
+                    </div>
+
+                    <div className="mt-1 text-xs text-fifa-mute">
+                      Solicitud enviada:{" "}
+                      {r?.createdAt
+                        ? new Date(r.createdAt).toLocaleString()
+                        : "—"}
                     </div>
                   </div>
 
                   <div className="flex gap-2">
                     <button
-                      disabled={actionLoading === userId}
-                      onClick={() => resolveRequest(userId, "approve")}
-                      className="rounded-lg px-4 py-2 text-sm font-semibold bg-green-500/20 text-green-400 ring-1 ring-green-400/30 hover:bg-green-500/30"
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => resolveRequest(userId, "accept")}
+                      className="rounded-lg px-4 py-2 text-sm font-semibold bg-green-500/20 text-green-400 ring-1 ring-green-400/30 hover:bg-green-500/30 disabled:opacity-60"
                     >
-                      Aprobar
+                      {isBusy ? "Procesando..." : "Aceptar"}
                     </button>
 
                     <button
-                      disabled={actionLoading === userId}
+                      type="button"
+                      disabled={isBusy}
                       onClick={() => resolveRequest(userId, "reject")}
-                      className="rounded-lg px-4 py-2 text-sm font-semibold bg-red-500/20 text-red-400 ring-1 ring-red-400/30 hover:bg-red-500/30"
+                      className="rounded-lg px-4 py-2 text-sm font-semibold bg-red-500/20 text-red-400 ring-1 ring-red-400/30 hover:bg-red-500/30 disabled:opacity-60"
                     >
-                      Rechazar
+                      {isBusy ? "Procesando..." : "Rechazar"}
                     </button>
                   </div>
                 </div>

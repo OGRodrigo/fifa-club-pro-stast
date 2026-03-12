@@ -317,17 +317,6 @@ export default function HomeMember() {
             />
           </div>
 
-          <div className="mt-4 rounded-xl bg-black/20 p-3 ring-1 ring-[var(--fifa-line)]">
-            <div className="text-xs text-[var(--fifa-mute)]">
-              Fuente de datos
-            </div>
-            <div className="mt-1 text-sm text-[var(--fifa-text)]">
-              /clubs/:clubId/players/me/stats
-            </div>
-            <div className="mt-1 text-xs text-[var(--fifa-mute)]">
-              Filtrado por temporada seleccionada
-            </div>
-          </div>
         </BoardCard>
       </div>
 

@@ -1020,13 +1020,18 @@ export default function Matches() {
 
   return (
     <section className="space-y-6">
-      {/* Header */}
+
+            {/* Header */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-        <h1 className="text-2xl font-bold">Matches v2</h1>
+        <h1 className="text-2xl font-bold text-white">
+  {isAdminOrCaptain ? "Gestión de partidos" : "Historial de partidos"}
+</h1>
+
         <p className="mt-2 text-sm text-slate-300">
-          Datos base completos, teamStats comparativas, lineup y playerStats
-          solo de tu club.
-        </p>
+  {isAdminOrCaptain
+    ? "Aquí puedes crear, editar y revisar los partidos del club."
+    : "Aquí puedes consultar el historial de partidos registrados de tu club."}
+</p>
 
         {baseErr ? (
           <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
@@ -1035,329 +1040,320 @@ export default function Matches() {
         ) : null}
       </div>
 
-      {/* Crear partido */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-        <h2 className="text-xl font-semibold">Crear partido</h2>
+            {/* Crear partido */}
+      {isAdminOrCaptain ? (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+          <h2 className="text-xl font-semibold">Crear partido</h2>
 
-        {!isAdminOrCaptain ? (
-          <div className="mt-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-200">
-            Solo admin o captain pueden crear partidos.
-          </div>
-        ) : null}
-
-        {createErr ? (
-          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-            {createErr}
-          </div>
-        ) : null}
-
-        {createOk ? (
-          <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-            {createOk}
-          </div>
-        ) : null}
-
-        <form onSubmit={handleCreateMatch} className="mt-4 space-y-6">
-          {/* Datos base */}
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <h3 className="font-semibold">1. Datos base</h3>
-
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <FieldSelect
-                label="Home club"
-                value={createState.homeClub}
-                onChange={(value) =>
-                  setCreateState((prev) => ({ ...prev, homeClub: value }))
-                }
-                options={clubOptions}
-                disabled={!isAdminOrCaptain}
-              />
-
-              <FieldSelect
-                label="Away club"
-                value={createState.awayClub}
-                onChange={(value) =>
-                  setCreateState((prev) => ({ ...prev, awayClub: value }))
-                }
-                options={clubOptions}
-                disabled={!isAdminOrCaptain}
-              />
-
-              <FieldInput
-                label="Fecha y hora"
-                type="datetime-local"
-                value={createState.date}
-                onChange={(value) =>
-                  setCreateState((prev) => ({ ...prev, date: value }))
-                }
-                disabled={!isAdminOrCaptain}
-              />
-
-              <FieldInput
-                label="Estadio"
-                value={createState.stadium}
-                onChange={(value) =>
-                  setCreateState((prev) => ({ ...prev, stadium: value }))
-                }
-                disabled={!isAdminOrCaptain}
-              />
-
-              <FieldInput
-                label="Competición"
-                value={createState.competition}
-                onChange={(value) =>
-                  setCreateState((prev) => ({ ...prev, competition: value }))
-                }
-                disabled={!isAdminOrCaptain}
-              />
-
-              <FieldSelectSimple
-                label="Estado"
-                value={createState.status}
-                onChange={(value) =>
-                  setCreateState((prev) => ({ ...prev, status: value }))
-                }
-                options={[
-                  { value: "played", label: "played" },
-                  { value: "scheduled", label: "scheduled" },
-                  { value: "cancelled", label: "cancelled" },
-                ]}
-                disabled={!isAdminOrCaptain}
-              />
-
-              <FieldInput
-                label="Score home"
-                type="number"
-                value={createState.scoreHome}
-                onChange={(value) =>
-                  setCreateState((prev) => ({ ...prev, scoreHome: value }))
-                }
-                disabled={!isAdminOrCaptain}
-              />
-
-              <FieldInput
-                label="Score away"
-                type="number"
-                value={createState.scoreAway}
-                onChange={(value) =>
-                  setCreateState((prev) => ({ ...prev, scoreAway: value }))
-                }
-                disabled={!isAdminOrCaptain}
-              />
+          {createErr ? (
+            <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+              {createErr}
             </div>
-          </div>
+          ) : null}
 
-          {/* Team stats */}
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <h3 className="font-semibold">2. Team stats</h3>
-            <p className="mt-1 text-sm text-slate-400">
-              Aquí sí puedes cargar stats de ambos clubes si la captura las
-              muestra.
-            </p>
-
-            <div className="mt-4 grid gap-6 lg:grid-cols-2">
-              <TeamStatsEditor
-                title="Home"
-                stats={createState.teamStats.home}
-                onChange={(field, value) =>
-                  setCreateState((prev) => ({
-                    ...prev,
-                    teamStats: {
-                      ...prev.teamStats,
-                      home: withCalculatedTeamPercents({
-                        ...prev.teamStats.home,
-                        [field]: value,
-                      }),
-                    },
-                  }))
-                }
-              />
-
-              <TeamStatsEditor
-                title="Away"
-                stats={createState.teamStats.away}
-                onChange={(field, value) =>
-                  setCreateState((prev) => ({
-                    ...prev,
-                    teamStats: {
-                      ...prev.teamStats,
-                      away: withCalculatedTeamPercents({
-                        ...prev.teamStats.away,
-                        [field]: value,
-                      }),
-                    },
-                  }))
-                }
-              />
+          {createOk ? (
+            <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+              {createOk}
             </div>
-          </div>
+          ) : null}
 
-          {/* Lineups */}
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <h3 className="font-semibold">3. Lineup de mi club</h3>
+          <form onSubmit={handleCreateMatch} className="mt-4 space-y-6">
+            {/* Datos base */}
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <h3 className="font-semibold">1. Datos base</h3>
 
-            <div className="mt-4">
-              {!myCreateSide ? (
-                <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-400">
-                  Selecciona primero si tu club será home o away para cargar la
-                  alineación.
-                </div>
-              ) : (
-                <LineupEditor
-                  title={`Lineup de mi club (${
-                    myCreateSide === "home" ? "home" : "away"
-                  })`}
-                  lineup={createState.lineups[myCreateSide]}
-                  memberOptions={memberOptions}
-                  onFormationChange={(value) =>
-                    setCreateState((prev) => ({
-                      ...prev,
-                      lineups: {
-                        ...prev.lineups,
-                        [myCreateSide]: {
-                          ...prev.lineups[myCreateSide],
-                          formation: value,
-                        },
-                      },
-                    }))
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <FieldSelect
+                  label="Home club"
+                  value={createState.homeClub}
+                  onChange={(value) =>
+                    setCreateState((prev) => ({ ...prev, homeClub: value }))
                   }
-                  onAdd={() =>
-                    setCreateState((prev) => ({
-                      ...prev,
-                      lineups: {
-                        ...prev.lineups,
-                        [myCreateSide]: {
-                          ...prev.lineups[myCreateSide],
-                          players: [
-                            ...prev.lineups[myCreateSide].players,
-                            createEmptyLineupPlayer(),
-                          ],
-                        },
-                      },
-                    }))
+                  options={clubOptions}
+                  disabled={!isAdminOrCaptain}
+                />
+
+                <FieldSelect
+                  label="Away club"
+                  value={createState.awayClub}
+                  onChange={(value) =>
+                    setCreateState((prev) => ({ ...prev, awayClub: value }))
                   }
-                  onRemove={(index) =>
-                    setCreateState((prev) => ({
-                      ...prev,
-                      lineups: {
-                        ...prev.lineups,
-                        [myCreateSide]: {
-                          ...prev.lineups[myCreateSide],
-                          players: prev.lineups[myCreateSide].players.filter(
-                            (_, i) => i !== index
-                          ),
-                        },
-                      },
-                    }))
+                  options={clubOptions}
+                  disabled={!isAdminOrCaptain}
+                />
+
+                <FieldInput
+                  label="Fecha y hora"
+                  type="datetime-local"
+                  value={createState.date}
+                  onChange={(value) =>
+                    setCreateState((prev) => ({ ...prev, date: value }))
                   }
-                  onPlayerChange={(index, patch) =>
+                  disabled={!isAdminOrCaptain}
+                />
+
+                <FieldInput
+                  label="Estadio"
+                  value={createState.stadium}
+                  onChange={(value) =>
+                    setCreateState((prev) => ({ ...prev, stadium: value }))
+                  }
+                  disabled={!isAdminOrCaptain}
+                />
+
+                <FieldInput
+                  label="Competición"
+                  value={createState.competition}
+                  onChange={(value) =>
+                    setCreateState((prev) => ({ ...prev, competition: value }))
+                  }
+                  disabled={!isAdminOrCaptain}
+                />
+
+                <FieldSelectSimple
+                  label="Estado"
+                  value={createState.status}
+                  onChange={(value) =>
+                    setCreateState((prev) => ({ ...prev, status: value }))
+                  }
+                  options={[
+                    { value: "played", label: "played" },
+                    { value: "scheduled", label: "scheduled" },
+                    { value: "cancelled", label: "cancelled" },
+                  ]}
+                  disabled={!isAdminOrCaptain}
+                />
+
+                <FieldInput
+                  label="Score home"
+                  type="number"
+                  value={createState.scoreHome}
+                  onChange={(value) =>
+                    setCreateState((prev) => ({ ...prev, scoreHome: value }))
+                  }
+                  disabled={!isAdminOrCaptain}
+                />
+
+                <FieldInput
+                  label="Score away"
+                  type="number"
+                  value={createState.scoreAway}
+                  onChange={(value) =>
+                    setCreateState((prev) => ({ ...prev, scoreAway: value }))
+                  }
+                  disabled={!isAdminOrCaptain}
+                />
+              </div>
+            </div>
+
+            {/* Team stats */}
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <h3 className="font-semibold">2. Team stats</h3>
+              <p className="mt-1 text-sm text-slate-400">
+                Aquí sí puedes cargar stats de ambos clubes si la captura las muestra.
+              </p>
+
+              <div className="mt-4 grid gap-6 lg:grid-cols-2">
+                <TeamStatsEditor
+                  title="Home"
+                  stats={createState.teamStats.home}
+                  onChange={(field, value) =>
                     setCreateState((prev) => ({
                       ...prev,
-                      lineups: {
-                        ...prev.lineups,
-                        [myCreateSide]: {
-                          ...prev.lineups[myCreateSide],
-                          players: prev.lineups[myCreateSide].players.map(
-                            (p, i) => (i === index ? { ...p, ...patch } : p)
-                          ),
-                        },
+                      teamStats: {
+                        ...prev.teamStats,
+                        home: withCalculatedTeamPercents({
+                          ...prev.teamStats.home,
+                          [field]: value,
+                        }),
                       },
                     }))
                   }
                 />
-              )}
-            </div>
-          </div>
 
-          {/* Player stats */}
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="font-semibold">4. Player stats de mi club</h3>
-                <p className="mt-1 text-sm text-slate-400">
-                  Aquí solo se cargan jugadores de tu club.
-                </p>
+                <TeamStatsEditor
+                  title="Away"
+                  stats={createState.teamStats.away}
+                  onChange={(field, value) =>
+                    setCreateState((prev) => ({
+                      ...prev,
+                      teamStats: {
+                        ...prev.teamStats,
+                        away: withCalculatedTeamPercents({
+                          ...prev.teamStats.away,
+                          [field]: value,
+                        }),
+                      },
+                    }))
+                  }
+                />
               </div>
+            </div>
+
+            {/* Lineups */}
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <h3 className="font-semibold">3. Lineup de mi club</h3>
+
+              <div className="mt-4">
+                {!myCreateSide ? (
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-400">
+                    Selecciona primero si tu club será home o away para cargar la alineación.
+                  </div>
+                ) : (
+                  <LineupEditor
+                    title={`Lineup de mi club (${myCreateSide === "home" ? "home" : "away"})`}
+                    lineup={createState.lineups[myCreateSide]}
+                    memberOptions={memberOptions}
+                    onFormationChange={(value) =>
+                      setCreateState((prev) => ({
+                        ...prev,
+                        lineups: {
+                          ...prev.lineups,
+                          [myCreateSide]: {
+                            ...prev.lineups[myCreateSide],
+                            formation: value,
+                          },
+                        },
+                      }))
+                    }
+                    onAdd={() =>
+                      setCreateState((prev) => ({
+                        ...prev,
+                        lineups: {
+                          ...prev.lineups,
+                          [myCreateSide]: {
+                            ...prev.lineups[myCreateSide],
+                            players: [
+                              ...prev.lineups[myCreateSide].players,
+                              createEmptyLineupPlayer(),
+                            ],
+                          },
+                        },
+                      }))
+                    }
+                    onRemove={(index) =>
+                      setCreateState((prev) => ({
+                        ...prev,
+                        lineups: {
+                          ...prev.lineups,
+                          [myCreateSide]: {
+                            ...prev.lineups[myCreateSide],
+                            players: prev.lineups[myCreateSide].players.filter(
+                              (_, i) => i !== index
+                            ),
+                          },
+                        },
+                      }))
+                    }
+                    onPlayerChange={(index, patch) =>
+                      setCreateState((prev) => ({
+                        ...prev,
+                        lineups: {
+                          ...prev.lineups,
+                          [myCreateSide]: {
+                            ...prev.lineups[myCreateSide],
+                            players: prev.lineups[myCreateSide].players.map((p, i) =>
+                              i === index ? { ...p, ...patch } : p
+                            ),
+                          },
+                        },
+                      }))
+                    }
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Player stats */}
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">4. Player stats de mi club</h3>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Aquí solo se cargan jugadores de tu club.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCreateState((prev) => ({
+                      ...prev,
+                      playerStats: [...prev.playerStats, createEmptyPlayerStat(myClubId)],
+                    }))
+                  }
+                  className="rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/10"
+                  disabled={!isAdminOrCaptain}
+                >
+                  Agregar jugador
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-4">
+                {createState.playerStats.map((ps, index) => (
+                  <PlayerStatEditor
+                    key={`create-ps-${index}`}
+                    title={`Jugador ${index + 1}`}
+                    row={ps}
+                    memberOptions={memberOptions}
+                    onChange={(patch) =>
+                      setCreateState((prev) => ({
+                        ...prev,
+                        playerStats: prev.playerStats.map((item, i) =>
+                          i === index
+                            ? withCalculatedPlayerPercents({
+                                ...item,
+                                ...patch,
+                                club: myClubId,
+                              })
+                            : item
+                        ),
+                      }))
+                    }
+                    onRemove={() =>
+                      setCreateState((prev) => ({
+                        ...prev,
+                        playerStats: prev.playerStats.filter((_, i) => i !== index),
+                      }))
+                    }
+                    removable={createState.playerStats.length > 1}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="submit"
+                disabled={!isAdminOrCaptain || createSaving || loadingBase}
+                className="rounded-xl bg-emerald-600 px-5 py-2.5 font-medium hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {createSaving ? "Guardando..." : "Crear partido"}
+              </button>
 
               <button
                 type="button"
-                onClick={() =>
-                  setCreateState((prev) => ({
-                    ...prev,
-                    playerStats: [
-                      ...prev.playerStats,
-                      createEmptyPlayerStat(myClubId),
-                    ],
-                  }))
-                }
-                className="rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/10"
-                disabled={!isAdminOrCaptain}
+                onClick={resetCreateForm}
+                disabled={createSaving}
+                className="rounded-xl border border-white/10 px-5 py-2.5 hover:bg-white/10 disabled:opacity-50"
               >
-                Agregar jugador
+                Limpiar
               </button>
             </div>
-
-            <div className="mt-4 space-y-4">
-              {createState.playerStats.map((ps, index) => (
-                <PlayerStatEditor
-                  key={`create-ps-${index}`}
-                  title={`Jugador ${index + 1}`}
-                  row={ps}
-                  memberOptions={memberOptions}
-                  onChange={(patch) =>
-                    setCreateState((prev) => ({
-                      ...prev,
-                      playerStats: prev.playerStats.map((item, i) =>
-                        i === index
-                          ? withCalculatedPlayerPercents({
-                              ...item,
-                              ...patch,
-                              club: myClubId,
-                            })
-                          : item
-                      ),
-                    }))
-                  }
-                  onRemove={() =>
-                    setCreateState((prev) => ({
-                      ...prev,
-                      playerStats: prev.playerStats.filter((_, i) => i !== index),
-                    }))
-                  }
-                  removable={createState.playerStats.length > 1}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="submit"
-              disabled={!isAdminOrCaptain || createSaving || loadingBase}
-              className="rounded-xl bg-emerald-600 px-5 py-2.5 font-medium hover:bg-emerald-500 disabled:opacity-50"
-            >
-              {createSaving ? "Guardando..." : "Crear partido"}
-            </button>
-
-            <button
-              type="button"
-              onClick={resetCreateForm}
-              disabled={createSaving}
-              className="rounded-xl border border-white/10 px-5 py-2.5 hover:bg-white/10 disabled:opacity-50"
-            >
-              Limpiar
-            </button>
-          </div>
-        </form>
-      </div>
+          </form>
+        </div>
+      ) : null}
 
       {/* Lista */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold">Partidos del club</h2>
+                        <h2 className="text-xl font-semibold">Partidos del club</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Admin y captain pueden editar. Solo admin puede eliminar.
+              {isAdminOrCaptain
+                ? "Admin y captain pueden editar. Solo admin puede eliminar."
+                : "Vista de consulta de los partidos registrados del club."}
             </p>
           </div>
 
@@ -1426,18 +1422,8 @@ export default function Matches() {
                       </td>
                       <td className="px-3 py-3">{match.status || "played"}</td>
 
-                      <td className="px-3 py-3">
+                                            <td className="px-3 py-3">
                         <div className="flex flex-wrap gap-2">
-                          {/* ✅ NUEVO:
-                              botón directo a MatchDetail desde la lista principal */}
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/matches/${match._id}`)}
-                            className="rounded-lg border border-cyan-500/30 px-3 py-1.5 text-cyan-200 hover:bg-cyan-500/10"
-                          >
-                            Ver detalle
-                          </button>
-
                           {isAdminOrCaptain ? (
                             <>
                               <button
@@ -1472,7 +1458,15 @@ export default function Matches() {
                                 PlayerStats
                               </button>
                             </>
-                          ) : null}
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/matches/${match._id}`)}
+                              className="rounded-lg border border-white/10 px-3 py-1.5 hover:bg-white/10"
+                            >
+                              Ver detalle
+                            </button>
+                          )}
 
                           {isAdmin ? (
                             <button
@@ -1495,8 +1489,8 @@ export default function Matches() {
       </div>
 
       {/* Panel edit base */}
-      {editBase.open ? (
-        <Panel title="Editar datos base" onClose={closeEditBase}>
+      {isAdminOrCaptain && editBase.open ? (
+  <Panel title="Editar datos base" onClose={closeEditBase}>
           {editBaseErr ? <ErrorBox text={editBaseErr} /> : null}
           {editBaseOk ? <SuccessBox text={editBaseOk} /> : null}
 
