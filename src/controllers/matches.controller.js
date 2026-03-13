@@ -549,15 +549,22 @@ exports.getMatches = async (req, res) => {
 
     if (season !== undefined) {
       const year = Number(season);
-      if (isNaN(year)) return res.status(400).json({ message: "Season inválida" });
+      if (isNaN(year)) {
+        return res.status(400).json({ message: "Season inválida" });
+      }
       filter.season = year;
     }
 
     if (club) {
+      if (!isValidObjectId(club)) {
+        return res.status(400).json({ message: "Club inválido" });
+      }
       filter.$or = [{ homeClub: club }, { awayClub: club }];
     }
 
-    if (stadium) filter.stadium = stadium;
+    if (stadium) {
+      filter.stadium = stadium;
+    }
 
     if (from || to) {
       filter.date = {};
@@ -586,6 +593,7 @@ exports.getMatches = async (req, res) => {
     if (isNaN(pageNum) || pageNum < 1) {
       return res.status(400).json({ message: "page inválida" });
     }
+
     if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
       return res.status(400).json({ message: "limit inválido" });
     }
@@ -610,7 +618,7 @@ exports.getMatches = async (req, res) => {
     console.error("getMatches ERROR:", error);
     return res.status(500).json({ message: "Error al obtener partidos" });
   }
-};
+};3
 
 /**
  * =====================================================
@@ -621,16 +629,22 @@ exports.getMatchById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ message: "ID de partido inválido" });
+    }
+
     const match = await Match.findById(id)
       .populate("homeClub", "name country")
       .populate("awayClub", "name country");
 
-    if (!match) return res.status(404).json({ message: "Partido no encontrado" });
+    if (!match) {
+      return res.status(404).json({ message: "Partido no encontrado" });
+    }
 
     return res.status(200).json(match);
   } catch (error) {
     console.error("getMatchById ERROR:", error);
-    return res.status(400).json({ message: "ID de partido inválido" });
+    return res.status(500).json({ message: "Error al obtener partido" });
   }
 };
 
@@ -710,6 +724,10 @@ exports.deleteMatch = async (req, res) => {
 exports.getMatchesHeadToHead = async (req, res) => {
   try {
     const { clubA, clubB } = req.params;
+
+    if (!isValidObjectId(clubA) || !isValidObjectId(clubB)) {
+      return res.status(400).json({ message: "IDs de club inválidos" });
+    }
 
     const matches = await Match.find({
       $or: [
@@ -915,21 +933,39 @@ exports.updateMatchLineups = async (req, res) => {
     }
 
     const match = await Match.findById(id);
-    if (!match) return res.status(404).json({ message: "Partido no encontrado" });
+    if (!match) {
+      return res.status(404).json({ message: "Partido no encontrado" });
+    }
 
     const homeId = match.homeClub.toString();
     const awayId = match.awayClub.toString();
 
     if (!ensureActingClubParticipates(actingClubId, homeId, awayId)) {
-      return res.status(403).json({ message: "Tu club no participa en este partido" });
+      return res.status(403).json({
+        message: "Tu club no participa en este partido",
+      });
     }
 
     const actingSide = getActingSide(actingClubId, homeId, awayId);
     if (!actingSide) {
-      return res.status(403).json({ message: "No se pudo determinar el lado del club actuante" });
+      return res.status(403).json({
+        message: "No se pudo determinar el lado del club actuante",
+      });
     }
 
-    const incomingLineup = normalizeLineup(lineups?.[actingSide] || {});
+    const rawLineup = lineups?.[actingSide] || {};
+
+    // ✅ validar antes de normalizar para no convertir objetos inválidos en []
+    if (
+      rawLineup.players !== undefined &&
+      !Array.isArray(rawLineup.players)
+    ) {
+      return res.status(400).json({
+        message: `lineups.${actingSide}.players debe ser array`,
+      });
+    }
+
+    const incomingLineup = normalizeLineup(rawLineup);
 
     const lineupErr = validateLineup(incomingLineup, `lineups.${actingSide}`);
     if (lineupErr) {
@@ -964,7 +1000,13 @@ exports.getCalendar = async (req, res) => {
     const { season, type } = req.query;
 
     const year = Number(season);
-    if (isNaN(year)) return res.status(400).json({ message: "Season inválida" });
+    if (isNaN(year)) {
+      return res.status(400).json({ message: "Season inválida" });
+    }
+
+    if (type && !["future", "past", "all"].includes(type)) {
+      return res.status(400).json({ message: "type inválido" });
+    }
 
     const start = new Date(`${year}-01-01T00:00:00.000Z`);
     const end = new Date(`${year}-12-31T23:59:59.999Z`);
@@ -991,7 +1033,6 @@ exports.getCalendar = async (req, res) => {
     return res.status(500).json({ message: "Error al obtener calendario" });
   }
 };
-
 /**
  * =====================================================
  * MVP DEL PARTIDO
@@ -1001,12 +1042,18 @@ exports.getMatchMVP = async (req, res) => {
   try {
     const { id } = req.params;
 
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ message: "ID de partido inválido" });
+    }
+
     const match = await Match.findById(id)
       .populate("playerStats.user", "username gamerTag")
       .populate("homeClub", "name")
       .populate("awayClub", "name");
 
-    if (!match) return res.status(404).json({ message: "Partido no encontrado" });
+    if (!match) {
+      return res.status(404).json({ message: "Partido no encontrado" });
+    }
 
     if (!match.playerStats || match.playerStats.length === 0) {
       return res.status(200).json({
@@ -1111,7 +1158,9 @@ exports.updateMatchPlayerStats = async (req, res) => {
     }
 
     const match = await Match.findById(id);
-    if (!match) return res.status(404).json({ message: "Partido no encontrado" });
+    if (!match) {
+      return res.status(404).json({ message: "Partido no encontrado" });
+    }
 
     const homeId = match.homeClub.toString();
     const awayId = match.awayClub.toString();
@@ -1122,13 +1171,42 @@ exports.updateMatchPlayerStats = async (req, res) => {
       });
     }
 
+    // ✅ Validar ANTES de normalizar para evitar TypeError con map()
+    if (!Array.isArray(playerStats)) {
+      return res.status(400).json({ message: "playerStats debe ser un array" });
+    }
+
+    // ✅ Normalizar payload del club actuante
     const normalizedPlayerStats = normalizePlayerStats(playerStats).map((ps) => ({
       ...ps,
       club: actingClubId,
     }));
 
-    const playerStatsErr = validatePlayerStats(
+    // ✅ Conservar stats del otro club
+    const preservedOtherClubStats = (match.playerStats || []).filter(
+      (ps) => String(ps.club) !== String(actingClubId)
+    );
+
+    // ✅ Validar SIEMPRE el bloque entrante
+    // strictTotals false aquí porque este bloque puede ser parcial respecto al partido completo
+    const incomingErr = validatePlayerStats(
       normalizedPlayerStats,
+      homeId,
+      awayId,
+      match.scoreHome,
+      match.scoreAway,
+      false
+    );
+
+    if (incomingErr) {
+      return res.status(400).json({ message: incomingErr });
+    }
+
+    // ✅ Validar el conjunto completo resultante
+    const mergedPlayerStats = [...preservedOtherClubStats, ...normalizedPlayerStats];
+
+    const mergedErr = validatePlayerStats(
+      mergedPlayerStats,
       homeId,
       awayId,
       match.scoreHome,
@@ -1136,15 +1214,11 @@ exports.updateMatchPlayerStats = async (req, res) => {
       strictTotals
     );
 
-    if (playerStatsErr) {
-      return res.status(400).json({ message: playerStatsErr });
+    if (mergedErr) {
+      return res.status(400).json({ message: mergedErr });
     }
 
-    const preservedOtherClubStats = (match.playerStats || []).filter(
-      (ps) => String(ps.club) !== String(actingClubId)
-    );
-
-    match.playerStats = [...preservedOtherClubStats, ...normalizedPlayerStats];
+    match.playerStats = mergedPlayerStats;
     await match.save();
 
     const populated = await Match.findById(match._id)

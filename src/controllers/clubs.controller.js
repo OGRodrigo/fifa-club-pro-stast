@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Club = require("../models/Club");
 const Match = require("../models/Match");
 const User = require("../models/User");
@@ -30,12 +31,18 @@ const getClubs = async (req, res) => {
 
 /**
  * GET /clubs/:id
+ * Obtiene un club por su ID
  */
 const getClubById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "ID inválido" });
+    }
+
     const club = await Club.findById(id);
+
     if (!club) {
       return res.status(404).json({ message: "Club no encontrado" });
     }
@@ -43,7 +50,7 @@ const getClubById = async (req, res) => {
     return res.status(200).json(club);
   } catch (error) {
     console.error("getClubById ERROR:", error);
-    return res.status(400).json({ message: "ID inválido" });
+    return res.status(500).json({ message: "Error interno del servidor" });
   }
 };
 

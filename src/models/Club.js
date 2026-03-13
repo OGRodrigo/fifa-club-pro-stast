@@ -8,12 +8,19 @@ const clubSchema = new mongoose.Schema(
       trim: true,
       unique: true,
     },
-
     country: {
       type: String,
       trim: true,
     },
-
+    founded: {
+      type: Number,
+      min: 1800,
+      max: 3000,
+    },
+    isPrivate: {
+      type: Boolean,
+      default: false,
+    },
     members: [
       {
         user: {
@@ -28,7 +35,6 @@ const clubSchema = new mongoose.Schema(
         },
       },
     ],
-
     joinRequests: [
       {
         user: {
@@ -51,5 +57,4 @@ const clubSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports =
-  mongoose.models.Club || mongoose.model("Club", clubSchema);
+module.exports = mongoose.models.Club || mongoose.model("Club", clubSchema);
