@@ -1,3 +1,4 @@
+// src/pages/home/HomeAdmin.jsx
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { api } from "../../api/client";
@@ -26,9 +27,6 @@ export default function HomeAdmin() {
 
   const [deletingClub, setDeletingClub] = useState(false);
 
-  // =========================
-  // Cargar temporadas disponibles
-  // =========================
   useEffect(() => {
     let alive = true;
 
@@ -59,14 +57,18 @@ export default function HomeAdmin() {
     };
   }, []);
 
-  // =========================
-  // Cargar dashboard del club
-  // =========================
   useEffect(() => {
     let alive = true;
 
     async function run() {
-      if (!clubId || !season) return;
+      if (!clubId || !season) {
+        if (!alive) return;
+        setSummary(null);
+        setLeaderboards(null);
+        setRecentMatches([]);
+        setErr("");
+        return;
+      }
 
       setLoading(true);
       setErr("");
@@ -94,7 +96,11 @@ export default function HomeAdmin() {
         setSummary(summaryRes.data || null);
         setLeaderboards(leaderboardsRes.data || null);
         setRecentMatches(
-          Array.isArray(matchesRes.data?.data) ? matchesRes.data.data : []
+          Array.isArray(matchesRes.data?.data)
+            ? matchesRes.data.data
+            : Array.isArray(matchesRes.data?.matches)
+            ? matchesRes.data.matches
+            : []
         );
       } catch (e) {
         if (!alive) return;
@@ -138,6 +144,8 @@ export default function HomeAdmin() {
   const notes = lb?.notes || {};
 
   async function handleDeleteClub() {
+    if (deletingClub) return;
+
     if (!isAdmin) {
       toast.error("Solo el admin puede eliminar el club.");
       return;
@@ -149,8 +157,8 @@ export default function HomeAdmin() {
     }
 
     const confirmed = window.confirm(
-  "Vas a eliminar el club y TODOS sus partidos, estadísticas, lineups y datos asociados. Esta acción no se puede deshacer. ¿Deseas continuar?"
-);
+      "Vas a eliminar el club y TODOS sus partidos, estadísticas, lineups y datos asociados. Esta acción no se puede deshacer. ¿Deseas continuar?"
+    );
 
     if (!confirmed) return;
 
@@ -174,9 +182,21 @@ export default function HomeAdmin() {
     }
   }
 
+  if (!clubId) {
+    return (
+      <div className="space-y-5">
+        <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
+          <div className="text-2xl font-extrabold tracking-tight">INICIO</div>
+          <div className="mt-3 text-sm text-[var(--fifa-mute)]">
+            No tienes un club activo seleccionado.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
-      {/* HEADER */}
       <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -196,9 +216,11 @@ export default function HomeAdmin() {
             </div>
           </div>
 
-          <div className="w-full lg:w-[260px] space-y-3">
+          <div className="w-full space-y-3 lg:w-[260px]">
             <div>
-              <div className="mb-2 text-xs text-[var(--fifa-mute)]">Temporada</div>
+              <div className="mb-2 text-xs text-[var(--fifa-mute)]">
+                Temporada
+              </div>
               <select
                 value={season}
                 onChange={(e) => setSeason(e.target.value)}
@@ -242,7 +264,6 @@ export default function HomeAdmin() {
         ) : null}
       </div>
 
-      {/* ATAJOS RÁPIDOS */}
       <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
           ACCESOS RÁPIDOS
@@ -291,7 +312,6 @@ export default function HomeAdmin() {
         </div>
       </div>
 
-      {/* KPI DEL CLUB */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="PJ" value={String(pj)} />
         <StatCard label="PG" value={String(pg)} />
@@ -299,7 +319,6 @@ export default function HomeAdmin() {
         <StatCard label="PTS" value={String(pts)} />
       </div>
 
-      {/* KPI SECUNDARIOS */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <MiniKpiCard label="PE" value={pe} accent="var(--fifa-cyan)" />
         <MiniKpiCard label="PP" value={pp} accent="var(--fifa-danger)" />
@@ -321,7 +340,6 @@ export default function HomeAdmin() {
         />
       </div>
 
-      {/* DESTACADOS */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <BoardCard title="TOP GOLEADOR" subtitle={notes?.topScorers}>
           {topScorers.length === 0 ? (
@@ -407,7 +425,6 @@ export default function HomeAdmin() {
         </BoardCard>
       </div>
 
-      {/* ÚLTIMOS PARTIDOS */}
       <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
           ÚLTIMOS PARTIDOS DEL CLUB
@@ -485,7 +502,6 @@ export default function HomeAdmin() {
         )}
       </div>
 
-      {/* BLOQUE DE GESTIÓN */}
       <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
           GESTIÓN DEL CLUB
@@ -558,7 +574,7 @@ function EmptyRow({ text }) {
   return <div className="mt-3 text-sm text-[var(--fifa-mute)]">{text}</div>;
 }
 
-function FeaturePlayer({ title, subtitle, stats, emoji = "⭐", grid4 = false }) {
+function FeaturePlayer({ title, subtitle, stats, emoji = "⭐" }) {
   return (
     <div className="mt-3">
       <div className="rounded-2xl bg-gradient-to-br from-[rgba(0,255,194,0.08)] to-[rgba(0,0,0,0.10)] p-4 ring-1 ring-[var(--fifa-line)]">
@@ -575,7 +591,7 @@ function FeaturePlayer({ title, subtitle, stats, emoji = "⭐", grid4 = false })
           </div>
         </div>
 
-        <div className={`mt-4 grid gap-2 ${grid4 ? "grid-cols-2" : "grid-cols-2"}`}>
+        <div className="mt-4 grid grid-cols-2 gap-2">
           {stats.map((s, idx) => (
             <MiniKpi
               key={`${s.label}-${idx}`}
@@ -593,7 +609,9 @@ function FeaturePlayer({ title, subtitle, stats, emoji = "⭐", grid4 = false })
 function MiniKpi({ label, value, accent }) {
   return (
     <div className="rounded-xl bg-black/25 p-3 ring-1 ring-[var(--fifa-line)]">
-      <div className="text-[10px] tracking-widest text-[var(--fifa-mute)]">{label}</div>
+      <div className="text-[10px] tracking-widest text-[var(--fifa-mute)]">
+        {label}
+      </div>
       <div className="mt-1 text-lg font-extrabold" style={{ color: accent }}>
         {value}
       </div>
@@ -610,7 +628,9 @@ function QuickActionCard({ title, subtitle, icon, accent, onClick }) {
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-sm font-extrabold text-[var(--fifa-text)]">{title}</div>
+          <div className="text-sm font-extrabold text-[var(--fifa-text)]">
+            {title}
+          </div>
           <div className="mt-1 text-xs text-[var(--fifa-mute)]">{subtitle}</div>
         </div>
 

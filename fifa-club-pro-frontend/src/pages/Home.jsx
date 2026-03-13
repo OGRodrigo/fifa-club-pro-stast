@@ -7,22 +7,23 @@ import HomeMember from "./home/HomeMember";
 export default function Home() {
   const { clubContext, booting, isLoggedIn } = useAuth();
 
-  // Evita parpadeo mientras se hidrata localStorage
-  if (booting) return null;
+  if (booting) {
+    return (
+      <div className="rounded-2xl bg-fifa-card p-6 ring-1 ring-[var(--fifa-line)] shadow-glow">
+        <p className="text-sm text-[var(--fifa-mute)]">Cargando inicio...</p>
+      </div>
+    );
+  }
 
-  // Si no está logeado, Home no debería mostrarse (pero por si acaso)
   if (!isLoggedIn) return null;
 
-  // 1) Sin club
   if (!clubContext?.clubId) {
     return <HomeNoClub />;
   }
 
-  // 2) Admin / Captain
   if (clubContext.role === "admin" || clubContext.role === "captain") {
     return <HomeAdmin />;
   }
 
-  // 3) Member (default)
   return <HomeMember />;
 }

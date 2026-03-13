@@ -17,7 +17,13 @@ export default function MatchDetail() {
     let alive = true;
 
     async function loadMatch() {
-      if (!id) return;
+      if (!id) {
+        setMatch(null);
+        setMvp(null);
+        setErr("ID de partido inválido");
+        setLoading(false);
+        return;
+      }
 
       try {
         setLoading(true);
@@ -43,7 +49,7 @@ export default function MatchDetail() {
         }
 
         if (mvpRes.status === "fulfilled") {
-          setMvp(mvpRes.value?.data || null);
+          setMvp(mvpRes.value?.data?.mvp ? mvpRes.value.data : null);
         } else {
           setMvp(null);
         }
@@ -76,10 +82,8 @@ export default function MatchDetail() {
     const competition = match?.competition || "League";
     const status = match?.status || "played";
     const stadium = match?.stadium || "Sin estadio";
+    const date = match?.date ? new Date(match.date).toLocaleString() : "—";
 
-        const date = match?.date
-      ? new Date(match.date).toLocaleString()
-      : "—";
     const playerStats = Array.isArray(match?.playerStats)
       ? match.playerStats
       : [];
@@ -117,14 +121,11 @@ export default function MatchDetail() {
       status,
       stadium,
       date,
-
       playerStats,
       playerStatsHome,
       playerStatsAway,
-
       teamStatsHome,
       teamStatsAway,
-
       lineupHome,
       lineupAway,
       lineupHomeFormation,
@@ -134,7 +135,7 @@ export default function MatchDetail() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-6">
+      <div className="rounded-2xl bg-fifa-card p-6 shadow-glow ring-1 ring-[var(--fifa-line)]">
         <div className="text-sm text-[var(--fifa-mute)]">
           Cargando detalle del partido…
         </div>
@@ -145,17 +146,17 @@ export default function MatchDetail() {
   if (err) {
     return (
       <div className="space-y-4">
-        <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-6">
+        <div className="rounded-2xl bg-fifa-card p-6 shadow-glow ring-1 ring-[var(--fifa-line)]">
           <div className="text-sm text-[var(--fifa-danger)]">Error: {err}</div>
         </div>
 
-                    <button
-              type="button"
-              onClick={() => navigate("/matches")}
-              className="rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon transition"
-            >
-              Volver a partidos
-            </button>
+        <button
+          type="button"
+          onClick={() => navigate("/matches")}
+          className="rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] transition hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon"
+        >
+          Volver a partidos
+        </button>
       </div>
     );
   }
@@ -163,7 +164,7 @@ export default function MatchDetail() {
   if (!match) {
     return (
       <div className="space-y-4">
-        <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-6">
+        <div className="rounded-2xl bg-fifa-card p-6 shadow-glow ring-1 ring-[var(--fifa-line)]">
           <div className="text-sm text-[var(--fifa-mute)]">
             No se encontró el partido.
           </div>
@@ -172,9 +173,9 @@ export default function MatchDetail() {
         <button
           type="button"
           onClick={() => navigate("/matches")}
-          className="rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon transition"
+          className="rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] transition hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon"
         >
-          Volver a matches
+          Volver a partidos
         </button>
       </div>
     );
@@ -182,8 +183,7 @@ export default function MatchDetail() {
 
   return (
     <div className="space-y-6">
-      {/* HEADER */}
-      <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-6">
+      <div className="rounded-2xl bg-fifa-card p-6 shadow-glow ring-1 ring-[var(--fifa-line)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="text-xs font-semibold tracking-widest text-[var(--fifa-cyan)]">
@@ -234,7 +234,7 @@ export default function MatchDetail() {
             </div>
           </div>
 
-          <div className="flex flex-col items-start lg:items-end gap-3">
+          <div className="flex flex-col items-start gap-3 lg:items-end">
             <div className="rounded-2xl bg-black/25 p-4 ring-1 ring-[var(--fifa-line)]">
               <div className="text-xs text-[var(--fifa-mute)]">
                 Marcador final
@@ -248,29 +248,27 @@ export default function MatchDetail() {
 
             <button
               type="button"
-              onClick={() => navigate("/home")}
-              className="rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon transition"
+              onClick={() => navigate("/matches")}
+              className="rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] transition hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon"
             >
-              Volver a home
+              Ir a partidos
             </button>
           </div>
         </div>
       </div>
 
-      {/* KPI */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label={normalized.homeName} value={normalized.scoreHome} />
         <StatCard label={normalized.awayName} value={normalized.scoreAway} />
         <StatCard label="Player Stats" value={normalized.playerStats.length} />
         <StatCard label="Temporada" value={normalized.season} />
       </div>
 
-      {/* TEAM STATS */}
-      <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-5">
+      <div className="rounded-2xl bg-fifa-card p-5 shadow-glow ring-1 ring-[var(--fifa-line)]">
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-cyan)]">
           TEAM STATS
         </div>
-        <div className="text-sm text-[var(--fifa-mute)] mt-1">
+        <div className="mt-1 text-sm text-[var(--fifa-mute)]">
           Comparativa del partido entre ambos clubes
         </div>
 
@@ -281,112 +279,94 @@ export default function MatchDetail() {
             away={normalized.teamStatsAway.possession}
             suffix="%"
           />
-
           <TeamStat
             label="Tiros"
             home={normalized.teamStatsHome.shots}
             away={normalized.teamStatsAway.shots}
           />
-
           <TeamStat
             label="Tiros a puerta"
             home={normalized.teamStatsHome.shotsOnTarget}
             away={normalized.teamStatsAway.shotsOnTarget}
           />
-
           <TeamStat
             label="Precisión tiro"
             home={normalized.teamStatsHome.shotAccuracy}
             away={normalized.teamStatsAway.shotAccuracy}
             suffix="%"
           />
-
           <TeamStat
             label="xG"
             home={normalized.teamStatsHome.expectedGoals}
             away={normalized.teamStatsAway.expectedGoals}
           />
-
           <TeamStat
             label="Pases"
             home={normalized.teamStatsHome.passes}
             away={normalized.teamStatsAway.passes}
           />
-
           <TeamStat
             label="Pases comp."
             home={normalized.teamStatsHome.passesCompleted}
             away={normalized.teamStatsAway.passesCompleted}
           />
-
           <TeamStat
             label="Precisión pase"
             home={normalized.teamStatsHome.passAccuracy}
             away={normalized.teamStatsAway.passAccuracy}
             suffix="%"
           />
-
           <TeamStat
             label="Entradas"
             home={normalized.teamStatsHome.tackles}
             away={normalized.teamStatsAway.tackles}
           />
-
           <TeamStat
             label="Entradas ganadas"
             home={normalized.teamStatsHome.tacklesWon}
             away={normalized.teamStatsAway.tacklesWon}
           />
-
           <TeamStat
             label="Éxito entradas"
             home={normalized.teamStatsHome.tackleSuccess}
             away={normalized.teamStatsAway.tackleSuccess}
             suffix="%"
           />
-
           <TeamStat
             label="Recuperaciones"
             home={normalized.teamStatsHome.recoveries}
             away={normalized.teamStatsAway.recoveries}
           />
-
           <TeamStat
             label="Intercepciones"
             home={normalized.teamStatsHome.interceptions}
             away={normalized.teamStatsAway.interceptions}
           />
-
           <TeamStat
             label="Atajadas"
             home={normalized.teamStatsHome.saves}
             away={normalized.teamStatsAway.saves}
           />
-
           <TeamStat
             label="Faltas"
             home={normalized.teamStatsHome.fouls}
             away={normalized.teamStatsAway.fouls}
           />
-
           <TeamStat
             label="Offsides"
             home={normalized.teamStatsHome.offsides}
             away={normalized.teamStatsAway.offsides}
           />
-
           <TeamStat
             label="Corners"
             home={normalized.teamStatsHome.corners}
             away={normalized.teamStatsAway.corners}
           />
-
           <TeamStat
             label="Amarillas"
             home={normalized.teamStatsHome.yellowCards}
             away={normalized.teamStatsAway.yellowCards}
           />
-
           <TeamStat
             label="Rojas"
             home={normalized.teamStatsHome.redCards}
@@ -395,8 +375,7 @@ export default function MatchDetail() {
         </div>
       </div>
 
-      {/* LINEUPS */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <LineupCard
           title={normalized.homeName}
           formation={normalized.lineupHomeFormation}
@@ -410,26 +389,20 @@ export default function MatchDetail() {
         />
       </div>
 
-      {/* MVP */}
-      <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-5">
+      <div className="rounded-2xl bg-fifa-card p-5 shadow-glow ring-1 ring-[var(--fifa-line)]">
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-neon)]">
           MVP DEL PARTIDO
         </div>
 
-        {!mvp || !mvp?.mvp ? (
+        {!mvp?.mvp ? (
           <div className="mt-3 text-sm text-[var(--fifa-mute)]">
             No hay MVP disponible para este partido.
           </div>
         ) : (
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-4">
-            <div className="rounded-2xl bg-gradient-to-br from-[rgba(0,255,194,0.08)] to-[rgba(0,0,0,0.10)] ring-1 ring-[var(--fifa-line)] p-4">
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
+            <div className="rounded-2xl bg-gradient-to-br from-[rgba(0,255,194,0.08)] to-[rgba(0,0,0,0.10)] p-4 ring-1 ring-[var(--fifa-line)]">
               <div className="flex items-center gap-3">
-                <div
-                  className="h-12 w-12 rounded-2xl bg-gradient-to-br
-                  from-yellow-400/30 to-yellow-600/20
-                  ring-1 ring-yellow-400/40
-                  flex items-center justify-center text-xl"
-                >
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-yellow-400/30 to-yellow-600/20 text-xl ring-1 ring-yellow-400/40">
                   🏆
                 </div>
 
@@ -442,7 +415,7 @@ export default function MatchDetail() {
                     @{mvp?.mvp?.username || "—"}
                   </div>
 
-                  <div className="text-xs text-yellow-400 font-semibold">
+                  <div className="text-xs font-semibold text-yellow-400">
                     MVP DEL PARTIDO
                   </div>
                 </div>
@@ -475,7 +448,6 @@ export default function MatchDetail() {
         )}
       </div>
 
-      {/* PLAYER STATS HOME */}
       <PlayerStatsTable
         title={`PLAYER STATS · ${normalized.homeName}`}
         subtitle="Detalle individual del club local"
@@ -483,7 +455,6 @@ export default function MatchDetail() {
         fallbackClubName={normalized.homeName}
       />
 
-      {/* PLAYER STATS AWAY */}
       <PlayerStatsTable
         title={`PLAYER STATS · ${normalized.awayName}`}
         subtitle="Detalle individual del club visitante"
@@ -497,7 +468,7 @@ export default function MatchDetail() {
 function StatCard({ label, value }) {
   return (
     <div className="rounded-xl bg-black/25 p-4 ring-1 ring-[var(--fifa-line)]">
-      <div className="text-xs text-[var(--fifa-mute)] truncate">{label}</div>
+      <div className="truncate text-xs text-[var(--fifa-mute)]">{label}</div>
       <div className="mt-1 text-2xl font-extrabold text-[var(--fifa-text)]">
         {value}
       </div>
@@ -517,10 +488,13 @@ function MiniStat({ label, value, accent }) {
 }
 
 function TeamStat({ label, home = 0, away = 0, suffix = "" }) {
-  const left = Number(home ?? 0);
-  const right = Number(away ?? 0);
-  const total = left + right;
+  const parsedHome = Number(home);
+  const parsedAway = Number(away);
 
+  const left = Number.isFinite(parsedHome) ? parsedHome : 0;
+  const right = Number.isFinite(parsedAway) ? parsedAway : 0;
+
+  const total = left + right;
   const homePercent = total > 0 ? (left / total) * 100 : 50;
   const awayPercent = total > 0 ? (right / total) * 100 : 50;
 
@@ -531,26 +505,26 @@ function TeamStat({ label, home = 0, away = 0, suffix = "" }) {
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="w-14 text-right text-[var(--fifa-neon)] font-bold">
+        <div className="w-14 text-right font-bold text-[var(--fifa-neon)]">
           {left}
           {suffix}
         </div>
 
-        <div className="flex-1 h-2 bg-black/40 rounded overflow-hidden">
+        <div className="h-2 flex-1 overflow-hidden rounded bg-black/40">
           <div
             className="h-full bg-[var(--fifa-neon)]"
             style={{ width: `${homePercent}%` }}
           />
         </div>
 
-        <div className="flex-1 h-2 bg-black/40 rounded overflow-hidden">
+        <div className="h-2 flex-1 overflow-hidden rounded bg-black/40">
           <div
             className="h-full bg-[var(--fifa-cyan)]"
             style={{ width: `${awayPercent}%` }}
           />
         </div>
 
-        <div className="w-14 text-left text-[var(--fifa-cyan)] font-bold">
+        <div className="w-14 text-left font-bold text-[var(--fifa-cyan)]">
           {right}
           {suffix}
         </div>
@@ -564,8 +538,8 @@ function LineupCard({ title, formation, players }) {
   const bench = players.filter((p) => p?.starter === false);
 
   return (
-    <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow p-4">
-      <div className="flex items-center justify-between mb-3">
+    <div className="rounded-2xl bg-fifa-card p-4 shadow-glow ring-1 ring-[var(--fifa-line)]">
+      <div className="mb-3 flex items-center justify-between">
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-neon)]">
           {title}
         </div>
@@ -583,18 +557,15 @@ function LineupCard({ title, formation, players }) {
 
       {starters.length > 0 && (
         <div className="space-y-1">
-          <div className="text-xs text-[var(--fifa-mute)] mb-1">
-            TITULARES
-          </div>
+          <div className="mb-1 text-xs text-[var(--fifa-mute)]">TITULARES</div>
 
           {starters.map((p, i) => {
-            const name =
-              p?.user?.gamerTag || p?.user?.username || "Jugador";
+            const name = p?.user?.gamerTag || p?.user?.username || "Jugador";
 
             return (
               <div
                 key={`starter-${p?.user?._id || p?.user || "player"}-${i}`}
-                className="flex justify-between text-sm bg-black/20 px-3 py-1 rounded"
+                className="flex justify-between rounded bg-black/20 px-3 py-1 text-sm"
               >
                 <span className="font-semibold">{name}</span>
 
@@ -610,18 +581,15 @@ function LineupCard({ title, formation, players }) {
 
       {bench.length > 0 && (
         <div className="mt-3 space-y-1">
-          <div className="text-xs text-[var(--fifa-mute)] mb-1">
-            SUPLENTES
-          </div>
+          <div className="mb-1 text-xs text-[var(--fifa-mute)]">SUPLENTES</div>
 
           {bench.map((p, i) => {
-            const name =
-              p?.user?.gamerTag || p?.user?.username || "Jugador";
+            const name = p?.user?.gamerTag || p?.user?.username || "Jugador";
 
             return (
               <div
                 key={`bench-${p?.user?._id || p?.user || "player"}-${i}`}
-                className="flex justify-between text-sm bg-black/10 px-3 py-1 rounded"
+                className="flex justify-between rounded bg-black/10 px-3 py-1 text-sm"
               >
                 <span>{name}</span>
 
@@ -640,8 +608,8 @@ function LineupCard({ title, formation, players }) {
 
 function PlayerStatsTable({ title, subtitle, rows, fallbackClubName }) {
   return (
-    <div className="rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow overflow-hidden">
-      <div className="px-5 py-4 border-b border-[var(--fifa-line)]/70 bg-black/20">
+    <div className="overflow-hidden rounded-2xl bg-fifa-card shadow-glow ring-1 ring-[var(--fifa-line)]">
+      <div className="border-b border-[var(--fifa-line)]/70 bg-black/20 px-5 py-4">
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-cyan)]">
           {title}
         </div>
@@ -661,23 +629,57 @@ function PlayerStatsTable({ title, subtitle, rows, fallbackClubName }) {
                 <tr className="bg-black">
                   <th className="w-12 px-2 py-3 text-center font-extrabold">#</th>
                   <th className="px-3 py-3 text-left font-extrabold">JUGADOR</th>
-                  <th className="w-[16%] px-3 py-3 text-left font-extrabold">CLUB</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">POS</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">RTG</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">MIN</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">G</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">A</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">TIR</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">T. ARCO</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">PASES</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">P. COMP</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">REG</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">REG G</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">TACK</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">TACK G</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">INT</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">REC</th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">MVP</th>
+                  <th className="w-[16%] px-3 py-3 text-left font-extrabold">
+                    CLUB
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    POS
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    RTG
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    MIN
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    G
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    A
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    TIR
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    T. ARCO
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    PASES
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    P. COMP
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    REG
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    REG G
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    TACK
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    TACK G
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    INT
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    REC
+                  </th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">
+                    MVP
+                  </th>
                 </tr>
               </thead>
 
@@ -690,7 +692,6 @@ function PlayerStatsTable({ title, subtitle, rows, fallbackClubName }) {
                     "—";
 
                   const username = ps?.user?.username || ps?.username || "—";
-
                   const clubName = ps?.club?.name || fallbackClubName || "—";
 
                   return (
@@ -719,7 +720,7 @@ function PlayerStatsTable({ title, subtitle, rows, fallbackClubName }) {
                         {ps?.position || "—"}
                       </td>
 
-                      <td className="px-2 py-3 text-center text-yellow-400 font-bold">
+                      <td className="px-2 py-3 text-center font-bold text-yellow-400">
                         {Number(ps?.rating ?? 0)}
                       </td>
 
@@ -777,7 +778,7 @@ function PlayerStatsTable({ title, subtitle, rows, fallbackClubName }) {
 
                       <td className="px-2 py-3 text-center">
                         {ps?.isMVP ? (
-                          <span className="text-yellow-400 text-lg">🏆</span>
+                          <span className="text-lg text-yellow-400">🏆</span>
                         ) : (
                           "—"
                         )}

@@ -10,64 +10,72 @@ export default function Dashboard() {
   const [seasons, setSeasons] = useState([]);
   const [season, setSeason] = useState("");
 
-  useEffect(() => {
-    let alive = true;
+// cambio pequeño aquí
+useEffect(() => {
+  let alive = true;
 
-    async function loadSeasons() {
-      try {
-        const res = await api.get("/league/seasons");
-        if (!alive) return;
+  async function loadSeasons() {
+    try {
+      const res = await api.get("/league/seasons");
+      if (!alive) return;
 
-        const list = Array.isArray(res.data?.seasons) ? res.data.seasons : [];
-        setSeasons(list);
+      const list = Array.isArray(res.data?.seasons) ? res.data.seasons : [];
 
-        if (list.length > 0) {
-          setSeason(String(list[0]));
-        }
-      } catch (e) {
-        if (!alive) return;
-        setSeasons([]);
+      setSeasons(list);
+
+      if (list.length > 0) {
+        setSeason(String(list[0]));
+      } else {
+        setSeason("");
       }
+    } catch {
+      if (!alive) return;
+      setSeasons([]);
+      setSeason("");
     }
+  }
 
-    loadSeasons();
+  loadSeasons();
 
-    return () => {
-      alive = false;
-    };
-  }, []);
+  return () => {
+    alive = false;
+  };
+}, []);
 
-  useEffect(() => {
-    let alive = true;
+useEffect(() => {
+  let alive = true;
 
-    async function loadDashboard() {
-      try {
-        setLoading(true);
-        setErr("");
+  async function loadDashboard() {
+    try {
+      setLoading(true);
+      setErr("");
 
-        const params = {};
-        if (season) params.season = season;
+      const params = {};
+      if (season) params.season = season;
 
-        const res = await api.get("/league/dashboard", { params });
-        if (!alive) return;
+      const res = await api.get("/league/dashboard", { params });
+      if (!alive) return;
 
-        setData(res.data);
-      } catch (e) {
-        if (!alive) return;
-        setErr(e?.response?.data?.message || e.message || "Error al cargar dashboard");
-      } finally {
-        if (alive) setLoading(false);
-      }
+      setData(res.data);
+    } catch (e) {
+      if (!alive) return;
+      setErr(e?.response?.data?.message || e.message || "Error al cargar dashboard");
+    } finally {
+      if (alive) setLoading(false);
     }
+  }
 
-    if (season || seasons.length === 0) {
-      loadDashboard();
-    }
+  // evita request cuando seasons ya cargó pero season aún no se setea
+  if (!season && seasons.length > 0) return;
 
-    return () => {
-      alive = false;
-    };
-  }, [season, seasons.length]);
+  if (season || seasons.length === 0) {
+    loadDashboard();
+  }
+
+  return () => {
+    alive = false;
+  };
+}, [season, seasons.length]);
 
   const table = useMemo(() => {
     const raw = Array.isArray(data?.table) ? data.table : [];

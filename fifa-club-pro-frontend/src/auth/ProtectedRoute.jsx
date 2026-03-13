@@ -2,20 +2,15 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 
-/**
- * =====================================================
- * PROTECTED ROUTE
- * -----------------------------------------------------
- * - Si AuthContext está booting, no redirige todavía
- * - Si no hay sesión, manda a /login
- * - Si hay sesión, renderiza children
- * =====================================================
- */
 export default function ProtectedRoute({ children }) {
   const { isLoggedIn, booting } = useAuth();
 
   if (booting) {
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <p className="text-sm text-slate-400">Cargando sesión...</p>
+      </div>
+    );
   }
 
   if (!isLoggedIn) {

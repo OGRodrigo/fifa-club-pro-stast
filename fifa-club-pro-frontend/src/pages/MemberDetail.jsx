@@ -38,7 +38,13 @@ export default function MemberDetail() {
     let alive = true;
 
     async function loadData() {
-      if (!clubId || !memberId) return;
+      if (!clubId || !memberId) {
+        setMember(null);
+        setMatches([]);
+        setErr(!clubId ? "No hay club activo seleccionado." : "ID de miembro inválido.");
+        setLoading(false);
+        return;
+      }
 
       try {
         setLoading(true);
@@ -70,18 +76,22 @@ export default function MemberDetail() {
 
         const allMatches = Array.isArray(matchesRes.data?.data)
           ? matchesRes.data.data
+          : Array.isArray(matchesRes.data?.matches)
+          ? matchesRes.data.matches
           : [];
 
         const clubMatches = allMatches.filter((match) => {
           const home = (match?.homeClub?._id || match?.homeClub || "").toString();
           const away = (match?.awayClub?._id || match?.awayClub || "").toString();
-          return home === clubId || away === clubId;
+          return home === String(clubId) || away === String(clubId);
         });
 
         setMember(selectedMember);
         setMatches(clubMatches);
       } catch (e) {
         if (!alive) return;
+        setMember(null);
+        setMatches([]);
         setErr(
           e?.response?.data?.message ||
             e.message ||
@@ -134,7 +144,6 @@ export default function MemberDetail() {
     let goals = 0;
     let assists = 0;
     const ratings = [];
-
     const playerMatches = [];
 
     for (const match of matches) {
@@ -148,26 +157,24 @@ export default function MemberDetail() {
       if (!row) continue;
 
       played += 1;
-      goals += Number(row?.goals || 0);
-      assists += Number(row?.assists || 0);
+      goals += safeNumber(row?.goals);
+      assists += safeNumber(row?.assists);
 
-      const rating = Number(row?.rating || 0);
-      if (!Number.isNaN(rating) && rating > 0) {
+      const rating = safeNumber(row?.rating);
+      if (rating > 0) {
         ratings.push(rating);
       }
 
       const homeId = (match?.homeClub?._id || match?.homeClub || "").toString();
       const awayId = (match?.awayClub?._id || match?.awayClub || "").toString();
 
-      const homeName = match?.homeClub?.name || "Home";
-      const awayName = match?.awayClub?.name || "Away";
+      const homeName = match?.homeClub?.name || match?.homeClubName || "Home";
+      const awayName = match?.awayClub?.name || match?.awayClubName || "Away";
+
+      const rowClubId = String(row?.club?._id || row?.club || "");
 
       const mySide =
-        String(row?.club?._id || row?.club || "") === homeId
-          ? "home"
-          : String(row?.club?._id || row?.club || "") === awayId
-          ? "away"
-          : "";
+        rowClubId === homeId ? "home" : rowClubId === awayId ? "away" : "";
 
       const myClubName =
         mySide === "home" ? homeName : mySide === "away" ? awayName : "Club";
@@ -175,28 +182,31 @@ export default function MemberDetail() {
       const rivalClubName =
         mySide === "home" ? awayName : mySide === "away" ? homeName : "Rival";
 
+      const scoreHome = safeNumber(match?.scoreHome);
+      const scoreAway = safeNumber(match?.scoreAway);
+
       let result = "D";
       if (mySide === "home") {
-        if (Number(match?.scoreHome || 0) > Number(match?.scoreAway || 0)) result = "W";
-        else if (Number(match?.scoreHome || 0) < Number(match?.scoreAway || 0)) result = "L";
+        if (scoreHome > scoreAway) result = "W";
+        else if (scoreHome < scoreAway) result = "L";
       } else if (mySide === "away") {
-        if (Number(match?.scoreAway || 0) > Number(match?.scoreHome || 0)) result = "W";
-        else if (Number(match?.scoreAway || 0) < Number(match?.scoreHome || 0)) result = "L";
+        if (scoreAway > scoreHome) result = "W";
+        else if (scoreAway < scoreHome) result = "L";
       }
 
       playerMatches.push({
-        matchId: match?._id,
+        matchId: match?._id || "",
         date: match?.date || null,
         competition: match?.competition || "League",
         status: match?.status || "played",
         myClubName,
         rivalClubName,
-        scoreHome: Number(match?.scoreHome ?? 0),
-        scoreAway: Number(match?.scoreAway ?? 0),
-        goals: Number(row?.goals || 0),
-        assists: Number(row?.assists || 0),
-        rating: Number(row?.rating || 0),
-        minutesPlayed: Number(row?.minutesPlayed || 0),
+        scoreHome,
+        scoreAway,
+        goals: safeNumber(row?.goals),
+        assists: safeNumber(row?.assists),
+        rating: safeNumber(row?.rating),
+        minutesPlayed: safeNumber(row?.minutesPlayed),
         isMVP: Boolean(row?.isMVP),
         result,
       });
@@ -206,7 +216,9 @@ export default function MemberDetail() {
       ratings.length === 0
         ? 0
         : Number(
-            (ratings.reduce((acc, current) => acc + current, 0) / ratings.length).toFixed(2)
+            (
+              ratings.reduce((acc, current) => acc + current, 0) / ratings.length
+            ).toFixed(2)
           );
 
     const bestRating = ratings.length === 0 ? 0 : Math.max(...ratings);
@@ -219,7 +231,7 @@ export default function MemberDetail() {
 
     const recentMatches = playerMatches.slice(0, 5);
     const recentRatings = recentMatches
-      .map((m) => Number(m.rating || 0))
+      .map((m) => safeNumber(m.rating))
       .filter((r) => r > 0);
 
     const recentAvgRating =
@@ -273,7 +285,9 @@ export default function MemberDetail() {
     return (
       <section className="space-y-4">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-          <div className="text-sm text-slate-300">Cargando detalle del miembro...</div>
+          <div className="text-sm text-slate-300">
+            Cargando detalle del miembro...
+          </div>
         </div>
       </section>
     );
@@ -281,7 +295,6 @@ export default function MemberDetail() {
 
   return (
     <section className="space-y-6">
-      {/* HEADER */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -321,7 +334,6 @@ export default function MemberDetail() {
         ) : null}
       </div>
 
-      {/* RESUMEN SUPERIOR */}
       <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -386,7 +398,6 @@ export default function MemberDetail() {
         </div>
       </div>
 
-      {/* KPIS */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <KpiCard
           label="Partidos jugados"
@@ -415,7 +426,6 @@ export default function MemberDetail() {
         />
       </div>
 
-      {/* FORMA RECIENTE */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <div className="mb-4">
           <h2 className="text-xl font-semibold">Forma reciente</h2>
@@ -442,7 +452,6 @@ export default function MemberDetail() {
         )}
       </div>
 
-      {/* DESTACADOS PERSONALES */}
       <div className="grid gap-4 lg:grid-cols-3">
         <SpotlightCard
           title="Perfil ofensivo"
@@ -487,7 +496,6 @@ export default function MemberDetail() {
         />
       </div>
 
-      {/* ÚLTIMOS PARTIDOS */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -538,7 +546,9 @@ export default function MemberDetail() {
                       className="border-b border-white/5 align-top hover:bg-white/[0.03]"
                     >
                       <td className="px-3 py-4 text-slate-200">{dateLabel}</td>
-                      <td className="px-3 py-4 text-slate-200">{row.competition}</td>
+                      <td className="px-3 py-4 text-slate-200">
+                        {row.competition}
+                      </td>
                       <td className="px-3 py-4">
                         <div className="font-medium text-slate-100">
                           {row.myClubName}
@@ -553,10 +563,10 @@ export default function MemberDetail() {
                       <td className="px-3 py-4">
                         <ResultBadge result={row.result} />
                       </td>
-                      <td className="px-3 py-4 text-yellow-300 font-semibold">
+                      <td className="px-3 py-4 font-semibold text-yellow-300">
                         {row.goals}
                       </td>
-                      <td className="px-3 py-4 text-sky-300 font-semibold">
+                      <td className="px-3 py-4 font-semibold text-sky-300">
                         {row.assists}
                       </td>
                       <td className="px-3 py-4 text-slate-200">
@@ -587,6 +597,11 @@ export default function MemberDetail() {
       </div>
     </section>
   );
+}
+
+function safeNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 /* =====================================================
@@ -720,10 +735,10 @@ function RecentMatchCard({ match, onOpen }) {
       </div>
 
       <div className="mt-3">
-        <div className="font-semibold text-slate-100 truncate">
+        <div className="truncate font-semibold text-slate-100">
           {match?.myClubName}
         </div>
-        <div className="text-xs text-slate-400 truncate">
+        <div className="truncate text-xs text-slate-400">
           vs {match?.rivalClubName}
         </div>
       </div>
@@ -738,9 +753,7 @@ function RecentMatchCard({ match, onOpen }) {
         <MiniKpi label="Min" value={match?.minutesPlayed ?? 0} />
         <MiniKpi
           label="RTG"
-          value={
-            <span className={ratingClass}>{match?.rating || "—"}</span>
-          }
+          value={<span className={ratingClass}>{match?.rating || "—"}</span>}
         />
       </div>
 
@@ -770,7 +783,7 @@ function ResultBadge({ result }) {
 
   return (
     <span
-      className={`rounded-full px-2.5 py-1 text-xs font-semibold border ${
+      className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
         map[result] || "border-white/10 bg-black/20 text-slate-300"
       }`}
     >

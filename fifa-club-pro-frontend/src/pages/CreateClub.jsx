@@ -48,9 +48,9 @@ export default function CreateClub() {
   }
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    const validationError = validateForm();
+  if (loading) return;
     if (validationError) {
       setErr(validationError);
       setOk("");

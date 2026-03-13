@@ -1,3 +1,4 @@
+// src/pages/ClubAnalytics.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
@@ -62,7 +63,12 @@ export default function ClubAnalytics() {
     let alive = true;
 
     async function loadData() {
-      if (!clubId) return;
+      if (!clubId) {
+        setMembers([]);
+        setMatches([]);
+        setErr("");
+        return;
+      }
 
       try {
         setLoading(true);
@@ -81,12 +87,14 @@ export default function ClubAnalytics() {
 
         const allMatches = Array.isArray(matchesRes.data?.data)
           ? matchesRes.data.data
+          : Array.isArray(matchesRes.data?.matches)
+          ? matchesRes.data.matches
           : [];
 
         const clubMatches = allMatches.filter((match) => {
           const home = (match?.homeClub?._id || match?.homeClub || "").toString();
           const away = (match?.awayClub?._id || match?.awayClub || "").toString();
-          return home === clubId || away === clubId;
+          return home === String(clubId) || away === String(clubId);
         });
 
         clubMatches.sort((a, b) => {
@@ -99,6 +107,8 @@ export default function ClubAnalytics() {
         setMatches(clubMatches);
       } catch (e) {
         if (!alive) return;
+        setMembers([]);
+        setMatches([]);
         setErr(
           e?.response?.data?.message ||
             e.message ||
@@ -143,11 +153,11 @@ export default function ClubAnalytics() {
         if (!row) continue;
 
         played += 1;
-        goals += Number(row?.goals || 0);
-        assists += Number(row?.assists || 0);
+        goals += safeNumber(row?.goals);
+        assists += safeNumber(row?.assists);
 
-        const rating = Number(row?.rating || 0);
-        if (!Number.isNaN(rating) && rating > 0) {
+        const rating = safeNumber(row?.rating);
+        if (rating > 0) {
           ratings.push(rating);
         }
       }
@@ -199,17 +209,17 @@ export default function ClubAnalytics() {
       const homeName = match?.homeClub?.name || "Home";
       const awayName = match?.awayClub?.name || "Away";
 
-      const isHome = homeId === clubId;
+      const isHome = homeId === String(clubId);
       const myClubName = isHome ? homeName : awayName;
       const rivalClubName = isHome ? awayName : homeName;
 
       const gf = isHome
-        ? Number(match?.scoreHome || 0)
-        : Number(match?.scoreAway || 0);
+        ? safeNumber(match?.scoreHome)
+        : safeNumber(match?.scoreAway);
 
       const ga = isHome
-        ? Number(match?.scoreAway || 0)
-        : Number(match?.scoreHome || 0);
+        ? safeNumber(match?.scoreAway)
+        : safeNumber(match?.scoreHome);
 
       let result = "D";
       if (gf > ga) result = "W";
@@ -300,7 +310,7 @@ export default function ClubAnalytics() {
 
       rating:
         [...memberRows]
-          .filter((m) => Number(m.avgRating || 0) > 0)
+          .filter((m) => safeNumber(m.avgRating) > 0)
           .sort((a, b) => {
             if (b.avgRating !== a.avgRating) return b.avgRating - a.avgRating;
             if (b.played !== a.played) return b.played - a.played;
@@ -316,7 +326,7 @@ export default function ClubAnalytics() {
     };
 
     const avgTeamRatingRows = memberRows.filter(
-      (m) => Number(m.avgRating || 0) > 0
+      (m) => safeNumber(m.avgRating) > 0
     );
 
     const avgTeamRating =
@@ -325,7 +335,7 @@ export default function ClubAnalytics() {
         : Number(
             (
               avgTeamRatingRows.reduce(
-                (acc, row) => acc + Number(row.avgRating || 0),
+                (acc, row) => acc + safeNumber(row.avgRating),
                 0
               ) / avgTeamRatingRows.length
             ).toFixed(2)
@@ -561,7 +571,6 @@ export default function ClubAnalytics() {
         />
       </div>
 
-      {/* GRÁFICOS */}
       <div className="grid gap-4 xl:grid-cols-2">
         <ChartCard
           title="Distribución de resultados"
@@ -608,7 +617,10 @@ export default function ClubAnalytics() {
           <div className="h-[320px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={analytics.goalsComparisonData} barGap={20}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="rgba(255,255,255,0.08)"
+                />
                 <XAxis dataKey="name" stroke="#94a3b8" />
                 <YAxis stroke="#94a3b8" />
                 <Tooltip
@@ -620,8 +632,18 @@ export default function ClubAnalytics() {
                   }}
                 />
                 <Legend />
-                <Bar dataKey="golesAFavor" name="Goles a favor" fill="#34d399" radius={[8, 8, 0, 0]} />
-                <Bar dataKey="golesEnContra" name="Goles en contra" fill="#f87171" radius={[8, 8, 0, 0]} />
+                <Bar
+                  dataKey="golesAFavor"
+                  name="Goles a favor"
+                  fill="#34d399"
+                  radius={[8, 8, 0, 0]}
+                />
+                <Bar
+                  dataKey="golesEnContra"
+                  name="Goles en contra"
+                  fill="#f87171"
+                  radius={[8, 8, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -639,7 +661,10 @@ export default function ClubAnalytics() {
             <div className="h-[340px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={analytics.recentTrendData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="rgba(255,255,255,0.08)"
+                  />
                   <XAxis dataKey="partido" stroke="#94a3b8" />
                   <YAxis stroke="#94a3b8" />
                   <Tooltip
@@ -698,7 +723,10 @@ export default function ClubAnalytics() {
                   layout="vertical"
                   margin={{ top: 10, right: 20, left: 20, bottom: 10 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="rgba(255,255,255,0.08)"
+                  />
                   <XAxis type="number" stroke="#94a3b8" />
                   <YAxis
                     type="category"
@@ -715,8 +743,18 @@ export default function ClubAnalytics() {
                     }}
                   />
                   <Legend />
-                  <Bar dataKey="goles" name="Goles" fill="#34d399" radius={[0, 8, 8, 0]} />
-                  <Bar dataKey="asistencias" name="Asistencias" fill="#60a5fa" radius={[0, 8, 8, 0]} />
+                  <Bar
+                    dataKey="goles"
+                    name="Goles"
+                    fill="#34d399"
+                    radius={[0, 8, 8, 0]}
+                  />
+                  <Bar
+                    dataKey="asistencias"
+                    name="Asistencias"
+                    fill="#60a5fa"
+                    radius={[0, 8, 8, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -884,7 +922,9 @@ export default function ClubAnalytics() {
                     <td className="px-3 py-4 text-slate-200">
                       {row.date ? new Date(row.date).toLocaleDateString() : "—"}
                     </td>
-                    <td className="px-3 py-4 text-slate-200">{row.competition}</td>
+                    <td className="px-3 py-4 text-slate-200">
+                      {row.competition}
+                    </td>
                     <td className="px-3 py-4">
                       <div className="font-medium text-slate-100">
                         {row.myClubName}
@@ -893,10 +933,10 @@ export default function ClubAnalytics() {
                         vs {row.rivalClubName}
                       </div>
                     </td>
-                    <td className="px-3 py-4 text-emerald-300 font-semibold">
+                    <td className="px-3 py-4 font-semibold text-emerald-300">
                       {row.gf}
                     </td>
-                    <td className="px-3 py-4 text-red-300 font-semibold">
+                    <td className="px-3 py-4 font-semibold text-red-300">
                       {row.ga}
                     </td>
                     <td className="px-3 py-4">
@@ -920,6 +960,11 @@ export default function ClubAnalytics() {
       </div>
     </section>
   );
+}
+
+function safeNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function InfoBadge({ label, value }) {
@@ -1039,7 +1084,7 @@ function RoleSummaryCard({ title, count, colorClass, textClass, max }) {
       <div className="text-sm text-slate-300">{title}</div>
       <div className={`mt-2 text-3xl font-bold ${textClass}`}>{safeCount}</div>
 
-      <div className="mt-3 h-2 w-full rounded-full bg-black/30 overflow-hidden">
+      <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-black/30">
         <div
           className={`h-full rounded-full ${colorClass}`}
           style={{ width: `${width}%` }}
@@ -1089,7 +1134,7 @@ function ResultBadge({ result }) {
 
   return (
     <span
-      className={`rounded-full px-2.5 py-1 text-xs font-semibold border ${
+      className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
         map[result] || "border-white/10 bg-black/20 text-slate-300"
       }`}
     >
@@ -1109,10 +1154,10 @@ function ClubRecentMatchCard({ match, onOpen }) {
       </div>
 
       <div className="mt-3">
-        <div className="font-semibold text-slate-100 truncate">
+        <div className="truncate font-semibold text-slate-100">
           {match?.myClubName}
         </div>
-        <div className="text-xs text-slate-400 truncate">
+        <div className="truncate text-xs text-slate-400">
           vs {match?.rivalClubName}
         </div>
       </div>

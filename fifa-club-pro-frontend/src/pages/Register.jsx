@@ -1,3 +1,4 @@
+// src/pages/Register.jsx
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { register as apiRegister, me as apiMe } from "../api/auth";
@@ -57,6 +58,8 @@ export default function Register() {
 
   async function onSubmit(e) {
     e.preventDefault();
+
+    if (loading) return;
 
     const validationError = validateForm();
     if (validationError) {
@@ -185,7 +188,10 @@ export default function Register() {
                     type="text"
                     autoComplete="username"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    onChange={(e) => {
+                      setUsername(e.target.value);
+                      if (err) setErr("");
+                    }}
                     placeholder="rodrigo"
                     className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none transition focus:border-sky-500/50"
                     disabled={loading}
@@ -200,7 +206,10 @@ export default function Register() {
                     type="email"
                     autoComplete="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (err) setErr("");
+                    }}
                     placeholder="tu@email.com"
                     className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none transition focus:border-sky-500/50"
                     disabled={loading}
@@ -215,7 +224,10 @@ export default function Register() {
                     type="password"
                     autoComplete="new-password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (err) setErr("");
+                    }}
                     placeholder="Mínimo 6 caracteres"
                     className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none transition focus:border-sky-500/50"
                     disabled={loading}
@@ -229,7 +241,10 @@ export default function Register() {
                   <input
                     type="text"
                     value={gamerTag}
-                    onChange={(e) => setGamerTag(e.target.value)}
+                    onChange={(e) => {
+                      setGamerTag(e.target.value);
+                      if (err) setErr("");
+                    }}
                     placeholder="Tu ID dentro del juego"
                     className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none transition focus:border-sky-500/50"
                     disabled={loading}
@@ -242,7 +257,10 @@ export default function Register() {
                   </span>
                   <select
                     value={platform}
-                    onChange={(e) => setPlatform(e.target.value)}
+                    onChange={(e) => {
+                      setPlatform(e.target.value);
+                      if (err) setErr("");
+                    }}
                     className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none transition focus:border-sky-500/50"
                     disabled={loading}
                   >
@@ -259,7 +277,10 @@ export default function Register() {
                   <input
                     type="text"
                     value={country}
-                    onChange={(e) => setCountry(e.target.value)}
+                    onChange={(e) => {
+                      setCountry(e.target.value);
+                      if (err) setErr("");
+                    }}
                     placeholder="Chile"
                     className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none transition focus:border-sky-500/50"
                     disabled={loading}

@@ -1,5 +1,5 @@
 // src/pages/home/HomeMember.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { api } from "../../api/client";
 import { useNavigate } from "react-router-dom";
@@ -60,7 +60,13 @@ export default function HomeMember() {
     let alive = true;
 
     async function run() {
-      if (!clubId || !season) return;
+      if (!clubId || !season) {
+        if (!alive) return;
+        setMyStats(null);
+        setRecentMatches([]);
+        setErr("");
+        return;
+      }
 
       setLoading(true);
       setErr("");
@@ -84,14 +90,20 @@ export default function HomeMember() {
 
         setMyStats(statsRes.data || null);
         setRecentMatches(
-          Array.isArray(matchesRes.data?.data) ? matchesRes.data.data : []
+          Array.isArray(matchesRes.data?.data)
+            ? matchesRes.data.data
+            : Array.isArray(matchesRes.data?.matches)
+            ? matchesRes.data.matches
+            : []
         );
       } catch (e) {
         if (!alive) return;
         setMyStats(null);
         setRecentMatches([]);
         setErr(
-          e?.response?.data?.message || e.message || "Error cargando HomeMember"
+          e?.response?.data?.message ||
+            e.message ||
+            "Error cargando HomeMember"
         );
       } finally {
         if (alive) setLoading(false);
@@ -116,9 +128,20 @@ export default function HomeMember() {
   const assistPerMatch = Number(myStats?.assistPerMatch ?? 0);
   const contribPerMatch = Number(myStats?.contribPerMatch ?? 0);
 
-  const directGoalInvolvement = useMemo(() => {
-    return goals + assists;
-  }, [goals, assists]);
+  const directGoalInvolvement = goals + assists;
+
+  if (!clubId) {
+    return (
+      <div className="space-y-5">
+        <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
+          <div className="text-2xl font-extrabold tracking-tight">INICIO</div>
+          <div className="mt-3 text-sm text-[var(--fifa-mute)]">
+            No tienes un club activo seleccionado.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -316,7 +339,6 @@ export default function HomeMember() {
               accent="var(--fifa-mute)"
             />
           </div>
-
         </BoardCard>
       </div>
 
@@ -481,7 +503,9 @@ function QuickActionCard({ title, subtitle, icon, accent, onClick }) {
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-sm font-extrabold text-[var(--fifa-text)]">{title}</div>
+          <div className="text-sm font-extrabold text-[var(--fifa-text)]">
+            {title}
+          </div>
           <div className="mt-1 text-xs text-[var(--fifa-mute)]">{subtitle}</div>
         </div>
 

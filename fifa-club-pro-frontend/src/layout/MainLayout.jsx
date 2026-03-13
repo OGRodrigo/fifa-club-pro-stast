@@ -1,7 +1,7 @@
 // src/layout/MainLayout.jsx
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const linkBase =
   "flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition";
@@ -13,16 +13,14 @@ const linkActive =
 export default function MainLayout({ children }) {
   const { user, logout, clubContext } = useAuth();
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef(null);
 
   const clubId = clubContext?.clubId || "";
   const role = clubContext?.role || "";
 
   const isAdmin = role === "admin";
   const isCaptain = role === "captain";
-  const isAdminOrCaptain = useMemo(
-    () => isAdmin || isCaptain,
-    [isAdmin, isCaptain]
-  );
+  const isAdminOrCaptain = isAdmin || isCaptain;
 
   const hasClub = Boolean(clubId);
   const canCopyId = hasClub && isAdminOrCaptain;
@@ -33,19 +31,31 @@ export default function MainLayout({ children }) {
     try {
       await navigator.clipboard.writeText(clubId);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
+
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+
+      copyTimerRef.current = setTimeout(() => {
+        setCopied(false);
+      }, 1200);
     } catch (e) {
       console.error("Clipboard error:", e);
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-fifa-radial">
-
-      {/* HEADER */}
       <header className="sticky top-0 z-20 border-b border-[var(--fifa-line)]/70 bg-black/30 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
-
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 ring-1 ring-[var(--fifa-neon)]/25 shadow-glow">
               ⚽
@@ -61,11 +71,9 @@ export default function MainLayout({ children }) {
                   clubId:{" "}
                   <span className="text-[var(--fifa-text)]">
                     {clubId || "—"}
-                  </span>
-                  {" "}· rol:{" "}
-                  <span className="text-[var(--fifa-text)]">
-                    {role || "—"}
-                  </span>
+                  </span>{" "}
+                  · rol:{" "}
+                  <span className="text-[var(--fifa-text)]">{role || "—"}</span>
                 </span>
 
                 {canCopyId && (
@@ -82,7 +90,7 @@ export default function MainLayout({ children }) {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:block text-sm text-[var(--fifa-mute)]">
+            <div className="hidden text-sm text-[var(--fifa-mute)] sm:block">
               {user?.username ?? "usuario"}
             </div>
 
@@ -96,12 +104,9 @@ export default function MainLayout({ children }) {
         </div>
       </header>
 
-      {/* LAYOUT */}
       <div className="mx-auto grid max-w-7xl grid-cols-12 gap-5 px-5 py-6">
-
         <aside className="col-span-12 md:col-span-3 xl:col-span-2">
           <div className="overflow-hidden rounded-2xl bg-fifa-card ring-1 ring-[var(--fifa-line)] shadow-glow">
-
             <div className="border-b border-[var(--fifa-line)]/70 px-4 py-4">
               <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
                 NAVEGACIÓN
@@ -110,7 +115,6 @@ export default function MainLayout({ children }) {
 
             <div className="px-3 py-3">
               <nav className="space-y-2">
-
                 <MenuSection title="General" />
                 <MenuLink to="/home" label="Inicio" icon="🏠" />
                 <MenuLink to="/league" label="Liga" icon="🏆" />
@@ -127,6 +131,11 @@ export default function MainLayout({ children }) {
                   <>
                     <MenuSection title="Club activo" />
                     <MenuLink to="/matches" label="Partidos" icon="⚽" />
+                    <MenuLink
+                      to="/club/member-stats"
+                      label="Mis stats"
+                      icon="👤"
+                    />
                   </>
                 )}
 
@@ -150,17 +159,14 @@ export default function MainLayout({ children }) {
                     />
                   </>
                 )}
-
               </nav>
             </div>
-
           </div>
         </aside>
 
         <main className="col-span-12 min-w-0 md:col-span-9 xl:col-span-10">
           {children}
         </main>
-
       </div>
     </div>
   );
@@ -168,7 +174,7 @@ export default function MainLayout({ children }) {
 
 function MenuSection({ title }) {
   return (
-    <div className="px-2 pt-2 pb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--fifa-mute)]/80">
+    <div className="px-2 pb-1 pt-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--fifa-mute)]/80">
       {title}
     </div>
   );

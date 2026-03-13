@@ -24,22 +24,12 @@ export default function Login() {
   const navigate = useNavigate();
   const { setSessionFromLogin, setClubContext } = useAuth();
 
-  // -------------------------
-  // Form state
-  // -------------------------
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  // -------------------------
-  // UI state
-  // -------------------------
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  /**
-   * Intenta resolver clubContext desde /auth/me
-   * si el login no lo devolvió explícitamente.
-   */
   async function resolveClubContextFallback() {
     try {
       const meData = await apiMe();
@@ -68,6 +58,8 @@ export default function Login() {
   async function onSubmit(e) {
     e.preventDefault();
 
+    if (loading) return;
+
     if (!email.trim() || !password.trim()) {
       setErr("Debes completar email y password.");
       return;
@@ -77,14 +69,6 @@ export default function Login() {
       setLoading(true);
       setErr("");
 
-      /**
-       * Respuesta esperada del backend:
-       * {
-       *   token,
-       *   user,
-       *   clubContext? // opcional
-       * }
-       */
       const data = await apiLogin(email.trim(), password);
 
       const token = data?.token || null;
@@ -95,21 +79,12 @@ export default function Login() {
         throw new Error("La respuesta de login no devolvió token o user.");
       }
 
-      /**
-       * Guardamos sesión base inmediatamente.
-       * Esto permite que /auth/me ya salga autenticado
-       * si necesitamos resolver clubContext después.
-       */
       setSessionFromLogin({
         token,
         user,
         clubContext,
       });
 
-      /**
-       * Si login no devolvió clubContext,
-       * intentamos resolverlo vía /auth/me
-       */
       if (!clubContext?.clubId) {
         clubContext = await resolveClubContextFallback();
 
@@ -134,8 +109,7 @@ export default function Login() {
     <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white">
       <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4 py-10">
         <div className="grid w-full overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-2xl lg:grid-cols-2">
-          {/* PANEL IZQUIERDO */}
-          <section className="hidden lg:flex flex-col justify-between bg-black/20 p-10">
+          <section className="hidden flex-col justify-between bg-black/20 p-10 lg:flex">
             <div>
               <div className="inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1 text-xs font-semibold uppercase tracking-widest text-emerald-300">
                 FIFA Club Pro
@@ -171,7 +145,6 @@ export default function Login() {
             </div>
           </section>
 
-          {/* PANEL DERECHO */}
           <section className="p-6 sm:p-8 lg:p-10">
             <div className="mx-auto w-full max-w-md">
               <div className="mb-8">
@@ -199,7 +172,10 @@ export default function Login() {
                     type="email"
                     autoComplete="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (err) setErr("");
+                    }}
                     placeholder="tu@email.com"
                     className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none ring-0 transition focus:border-emerald-500/50"
                     disabled={loading}
@@ -214,7 +190,10 @@ export default function Login() {
                     type="password"
                     autoComplete="current-password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (err) setErr("");
+                    }}
                     placeholder="••••••••"
                     className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 outline-none ring-0 transition focus:border-emerald-500/50"
                     disabled={loading}
@@ -253,11 +232,6 @@ export default function Login() {
   );
 }
 
-/**
- * =====================================================
- * Subcomponentes visuales
- * =====================================================
- */
 function FeatureItem({ title, text }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">

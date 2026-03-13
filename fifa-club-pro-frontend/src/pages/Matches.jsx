@@ -327,7 +327,13 @@ export default function Matches() {
 
         if (!active) return;
 
-        setClubs(Array.isArray(clubsRes.data) ? clubsRes.data : []);
+        setClubs(
+  Array.isArray(clubsRes.data)
+    ? clubsRes.data
+    : Array.isArray(clubsRes.data?.clubs)
+    ? clubsRes.data.clubs
+    : []
+);
 
         if (membersRes) {
           const members = Array.isArray(membersRes.data?.members)
@@ -392,7 +398,13 @@ export default function Matches() {
         },
       });
 
-      setMatches(Array.isArray(res.data?.data) ? res.data.data : []);
+      setMatches(
+  Array.isArray(res.data?.data)
+    ? res.data.data
+    : Array.isArray(res.data?.matches)
+    ? res.data.matches
+    : []
+);
     } catch (error) {
       setMatchesErr(
         error?.response?.data?.message ||
@@ -444,10 +456,9 @@ export default function Matches() {
    * Helpers de create
    * ===================================================== */
   function resetCreateForm() {
-    setCreateState(createInitialCreateState(myClubId || ""));
-    setCreateErr("");
-    setCreateOk("");
-  }
+  setCreateState(createInitialCreateState(myClubId || ""));
+  setCreateErr("");
+}
 
   function validateCreateForm() {
     if (!myClubId) return "No tienes club activo.";
@@ -475,8 +486,9 @@ export default function Matches() {
 
     const validationError = validateCreateForm();
     if (validationError) {
-      setCreateErr(validationError);
-      setCreateOk("");
+      setCreateOk("Partido creado correctamente.");
+resetCreateForm();
+await loadMatches();
       return;
     }
 
@@ -946,6 +958,13 @@ export default function Matches() {
 
   async function handleSavePlayerStats(e) {
     e.preventDefault();
+
+    const validationError = validatePlayerStatsRows(editPlayerStats.playerStats);
+if (validationError) {
+  setEditPlayerStatsErr(validationError);
+  setEditPlayerStatsOk("");
+  return;
+}
 
     try {
       setEditPlayerStats((prev) => ({ ...prev, saving: true }));

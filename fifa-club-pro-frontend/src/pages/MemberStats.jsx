@@ -31,10 +31,7 @@ export default function MemberStats() {
 
   const isAdmin = role === "admin";
   const isCaptain = role === "captain";
-  const isAdminOrCaptain = useMemo(
-    () => isAdmin || isCaptain,
-    [isAdmin, isCaptain]
-  );
+  const isAdminOrCaptain = isAdmin || isCaptain;
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -69,6 +66,7 @@ export default function MemberStats() {
     if (!clubId) {
       setMembers([]);
       setRows([]);
+      setErr("");
       return;
     }
 
@@ -86,12 +84,14 @@ export default function MemberStats() {
 
       const matches = Array.isArray(matchesRes.data?.data)
         ? matchesRes.data.data
+        : Array.isArray(matchesRes.data?.matches)
+        ? matchesRes.data.matches
         : [];
 
       const clubMatches = matches.filter((match) => {
         const home = (match?.homeClub?._id || match?.homeClub || "").toString();
         const away = (match?.awayClub?._id || match?.awayClub || "").toString();
-        return home === clubId || away === clubId;
+        return home === String(clubId) || away === String(clubId);
       });
 
       const computed = mems.map((member) => {
@@ -119,11 +119,11 @@ export default function MemberStats() {
           if (!playerRow) continue;
 
           played += 1;
-          goals += Number(playerRow?.goals || 0);
-          assists += Number(playerRow?.assists || 0);
+          goals += safeNumber(playerRow?.goals);
+          assists += safeNumber(playerRow?.assists);
 
-          const rating = Number(playerRow?.rating || 0);
-          if (!Number.isNaN(rating) && rating > 0) {
+          const rating = safeNumber(playerRow?.rating);
+          if (rating > 0) {
             ratings.push(rating);
           }
         }
@@ -174,7 +174,13 @@ export default function MemberStats() {
   };
 
   useEffect(() => {
-    if (!clubId) return;
+    if (!clubId) {
+      setMembers([]);
+      setRows([]);
+      setErr("");
+      return;
+    }
+
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clubId]);
@@ -246,26 +252,26 @@ export default function MemberStats() {
   const stats = useMemo(() => {
     const totalMembers = members.length;
     const totalPlayed = rows.reduce(
-      (acc, row) => acc + Number(row.played || 0),
+      (acc, row) => acc + safeNumber(row.played),
       0
     );
     const totalGoals = rows.reduce(
-      (acc, row) => acc + Number(row.goals || 0),
+      (acc, row) => acc + safeNumber(row.goals),
       0
     );
     const totalAssists = rows.reduce(
-      (acc, row) => acc + Number(row.assists || 0),
+      (acc, row) => acc + safeNumber(row.assists),
       0
     );
 
-    const avgTeamRatingRows = rows.filter((r) => Number(r.avgRating || 0) > 0);
+    const avgTeamRatingRows = rows.filter((r) => safeNumber(r.avgRating) > 0);
     const avgTeamRating =
       avgTeamRatingRows.length === 0
         ? 0
         : Number(
             (
               avgTeamRatingRows.reduce(
-                (acc, row) => acc + Number(row.avgRating || 0),
+                (acc, row) => acc + safeNumber(row.avgRating),
                 0
               ) / avgTeamRatingRows.length
             ).toFixed(2)
@@ -289,7 +295,7 @@ export default function MemberStats() {
 
     const bestRated =
       [...rows]
-        .filter((r) => Number(r.avgRating || 0) > 0)
+        .filter((r) => safeNumber(r.avgRating) > 0)
         .sort((a, b) => {
           if (b.avgRating !== a.avgRating) return b.avgRating - a.avgRating;
           if (b.played !== a.played) return b.played - a.played;
@@ -297,7 +303,7 @@ export default function MemberStats() {
         })[0] || null;
 
     const maxContrib = rows.reduce(
-      (acc, row) => Math.max(acc, Number(row.contrib || 0)),
+      (acc, row) => Math.max(acc, safeNumber(row.contrib)),
       0
     );
 
@@ -447,10 +453,10 @@ export default function MemberStats() {
         ) : null}
       </div>
 
-            {/* RESUMEN SUPERIOR */}
+      {/* RESUMEN SUPERIOR */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
         <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-          Resumen 
+          Resumen
         </div>
 
         <div className="mt-4 grid gap-4 md:grid-cols-3">
@@ -498,7 +504,6 @@ export default function MemberStats() {
           />
         </div>
       </div>
-      
 
       {/* KPIS */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -586,7 +591,7 @@ export default function MemberStats() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="gamerTag, username, plataforma, país..."
-              className="w-full rounded-xl bg-black/30 px-3 py-2 ring-1 ring-white/10 text-slate-100 placeholder:text-slate-500"
+              className="w-full rounded-xl bg-black/30 px-3 py-2 text-slate-100 ring-1 ring-white/10 placeholder:text-slate-500"
             />
           </label>
 
@@ -595,12 +600,12 @@ export default function MemberStats() {
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="w-full rounded-xl bg-black/30 px-3 py-2 ring-1 ring-white/10 text-slate-100"
+              className="w-full rounded-xl bg-black/30 px-3 py-2 text-slate-100 ring-1 ring-white/10"
             >
-              <option value="all">all</option>
-              <option value="admin">admin</option>
-              <option value="captain">captain</option>
-              <option value="member">member</option>
+              <option value="all">Todos</option>
+              <option value="admin">Admin</option>
+              <option value="captain">Captain</option>
+              <option value="member">Member</option>
             </select>
           </label>
 
@@ -609,14 +614,14 @@ export default function MemberStats() {
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="w-full rounded-xl bg-black/30 px-3 py-2 ring-1 ring-white/10 text-slate-100"
+              className="w-full rounded-xl bg-black/30 px-3 py-2 text-slate-100 ring-1 ring-white/10"
             >
-              <option value="goals">goles</option>
-              <option value="assists">asistencias</option>
-              <option value="played">partidos</option>
-              <option value="contrib">contribución</option>
-              <option value="rating">rating</option>
-              <option value="name">nombre</option>
+              <option value="goals">Goles</option>
+              <option value="assists">Asistencias</option>
+              <option value="played">Partidos</option>
+              <option value="contrib">Contribución</option>
+              <option value="rating">Rating</option>
+              <option value="name">Nombre</option>
             </select>
           </label>
 
@@ -751,7 +756,7 @@ export default function MemberStats() {
                             onChange={(e) =>
                               handleRoleChange(r.userId, e.target.value)
                             }
-                            className="w-full rounded-xl bg-black/30 px-3 py-2 ring-1 ring-white/10 text-slate-100 disabled:opacity-50"
+                            className="w-full rounded-xl bg-black/30 px-3 py-2 text-slate-100 ring-1 ring-white/10 disabled:opacity-50"
                           >
                             <option value="member">member</option>
                             <option value="captain">captain</option>
@@ -820,6 +825,11 @@ export default function MemberStats() {
  * =====================================================
  */
 
+function safeNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function getMedal(index) {
   if (index === 0) return "🥇";
   if (index === 1) return "🥈";
@@ -854,21 +864,6 @@ function QuickInfoCard({ label, value }) {
   );
 }
 
-function StatusRow({ label, value, good }) {
-  return (
-    <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-      <div className="text-sm text-slate-300">{label}</div>
-      <div
-        className={`text-xs font-semibold ${
-          good ? "text-emerald-300" : "text-yellow-300"
-        }`}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
 function RolePill({ role }) {
   const styles = {
     admin: "border-sky-500/20 bg-sky-500/10 text-sky-200",
@@ -878,7 +873,7 @@ function RolePill({ role }) {
 
   return (
     <span
-      className={`rounded-full px-3 py-1 text-xs capitalize border ${
+      className={`rounded-full border px-3 py-1 text-xs capitalize ${
         styles[role] || styles.member
       }`}
     >
@@ -958,8 +953,8 @@ function ProgressBar({
   colorClass = "bg-emerald-400",
   textColorClass = "text-slate-200",
 }) {
-  const safeValue = Number(value || 0);
-  const safeMax = Math.max(Number(max || 1), 1);
+  const safeValue = safeNumber(value);
+  const safeMax = Math.max(safeNumber(max), 1);
   const width = Math.max(0, Math.min(100, (safeValue / safeMax) * 100));
 
   return (
@@ -967,7 +962,7 @@ function ProgressBar({
       <div className={`text-xs font-semibold ${textColorClass}`}>
         {safeValue}
       </div>
-      <div className="h-2 w-full rounded-full bg-black/30 overflow-hidden">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-black/30">
         <div
           className={`h-full rounded-full ${colorClass}`}
           style={{ width: `${width}%` }}
@@ -978,7 +973,7 @@ function ProgressBar({
 }
 
 function RatingBar({ value = 0 }) {
-  const safeValue = Number(value || 0);
+  const safeValue = safeNumber(value);
   const width = Math.max(0, Math.min(100, (safeValue / 10) * 100));
 
   let colorClass = "bg-slate-500";
@@ -1000,7 +995,7 @@ function RatingBar({ value = 0 }) {
       <div className={`text-xs font-semibold ${textColorClass}`}>
         {safeValue || "—"}
       </div>
-      <div className="h-2 w-full rounded-full bg-black/30 overflow-hidden">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-black/30">
         <div
           className={`h-full rounded-full ${colorClass}`}
           style={{ width: `${width}%` }}
