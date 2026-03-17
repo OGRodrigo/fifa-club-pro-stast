@@ -48,9 +48,12 @@ export default function CreateClub() {
   }
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  if (loading) return;
+    if (loading) return;
+
+    const validationError = validateForm();
+
     if (validationError) {
       setErr(validationError);
       setOk("");
@@ -137,11 +140,16 @@ export default function CreateClub() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label className="block text-sm text-fifa-mute">
+              <label
+                htmlFor="club-name"
+                className="block text-sm text-fifa-mute"
+              >
                 Nombre del club
               </label>
 
               <input
+                id="club-name"
+                name="name"
                 type="text"
                 value={form.name}
                 onChange={(e) => onChange("name", e.target.value)}
@@ -162,9 +170,16 @@ export default function CreateClub() {
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm text-fifa-mute">País</label>
+              <label
+                htmlFor="club-country"
+                className="block text-sm text-fifa-mute"
+              >
+                País
+              </label>
 
               <input
+                id="club-country"
+                name="country"
                 type="text"
                 value={form.country}
                 onChange={(e) => onChange("country", e.target.value)}

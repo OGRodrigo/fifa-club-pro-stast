@@ -38,8 +38,6 @@ export default function Clubs() {
   return (
     <div className="min-h-screen bg-fifa-radial">
       <div className="mx-auto max-w-xl px-4 py-10 space-y-6">
-
-        {/* HEADER */}
         <div className="space-y-1 text-center">
           <h1 className="text-3xl font-bold text-fifa-text">
             Unirse a club
@@ -50,17 +48,16 @@ export default function Clubs() {
           </p>
         </div>
 
-        {/* CARD */}
         <div className="rounded-2xl border border-fifa-line bg-fifa-card shadow-glow p-6">
-
           <form onSubmit={handleJoin} className="space-y-4">
-
             <div className="space-y-2">
-              <label className="text-sm text-fifa-mute">
+              <label htmlFor="clubId" className="text-sm text-fifa-mute">
                 ID del club
               </label>
 
               <input
+                id="clubId"
+                name="clubId"
                 type="text"
                 value={clubId}
                 onChange={(e) => setClubId(e.target.value)}
@@ -88,13 +85,11 @@ export default function Clubs() {
             >
               {loading ? "Enviando..." : "Solicitar ingreso"}
             </button>
-
           </form>
 
           <p className="mt-4 text-xs text-fifa-mute text-center">
             El administrador del club deberá aprobar tu solicitud.
           </p>
-
         </div>
       </div>
     </div>
