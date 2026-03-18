@@ -29,11 +29,11 @@ import {
  * - GET /clubs/:clubId/members
  * - GET /matches?limit=100
  *
- * Reglas aplicadas:
- * - Solo admin/captain pueden entrar.
- * - Si no hay club activo, se muestra guard claro.
- * - La analítica competitiva usa partidos jugados.
- * - La UI se deja más robusta para testing y accesibilidad.
+ * Mejora visual:
+ * - gráficos de resultados
+ * - comparación goles a favor / en contra
+ * - evolución reciente
+ * - top contribución del plantel
  * =====================================================
  */
 
@@ -42,6 +42,35 @@ const RESULT_COLORS = {
   D: "#fbbf24",
   L: "#f87171",
 };
+
+const IS_TEST_ENV =
+  (typeof import.meta !== "undefined" &&
+    import.meta?.env &&
+    import.meta.env.MODE === "test") ||
+  (typeof process !== "undefined" && process.env?.NODE_ENV === "test");
+
+/**
+ * Wrapper seguro para charts:
+ * - En navegador real usa ResponsiveContainer
+ * - En tests usa ancho/alto fijos para evitar warnings de Recharts
+ */
+function SafeChartContainer({ height = 320, children }) {
+  if (IS_TEST_ENV) {
+    return (
+      <div style={{ width: 900, height }}>
+        {children(900, height)}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full min-w-0" style={{ height }}>
+      <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+        {children()}
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 export default function ClubAnalytics() {
   const navigate = useNavigate();
@@ -64,7 +93,6 @@ export default function ClubAnalytics() {
 
     async function loadData() {
       if (!clubId) {
-        if (!alive) return;
         setMembers([]);
         setMatches([]);
         setErr("");
@@ -128,10 +156,6 @@ export default function ClubAnalytics() {
   }, [clubId]);
 
   const analytics = useMemo(() => {
-    const playedMatchesOnly = matches.filter(
-      (match) => String(match?.status || "played").toLowerCase() === "played"
-    );
-
     const memberRows = members.map((member) => {
       const userId = (member?.user?._id || member?.user || "").toString();
       const username = member?.user?.username || "—";
@@ -145,7 +169,7 @@ export default function ClubAnalytics() {
       let assists = 0;
       const ratings = [];
 
-      for (const match of playedMatchesOnly) {
+      for (const match of matches) {
         const playerStats = Array.isArray(match?.playerStats)
           ? match.playerStats
           : [];
@@ -207,7 +231,7 @@ export default function ClubAnalytics() {
     const recentResults = [];
     const allClubMatches = [];
 
-    for (const match of playedMatchesOnly) {
+    for (const match of matches) {
       const homeId = (match?.homeClub?._id || match?.homeClub || "").toString();
       const awayId = (match?.awayClub?._id || match?.awayClub || "").toString();
 
@@ -413,19 +437,6 @@ export default function ClubAnalytics() {
     };
   }, [members, matches, clubId]);
 
-  if (!clubId) {
-    return (
-      <section className="space-y-4">
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-          <h1 className="text-2xl font-bold">Club Analytics</h1>
-          <p className="mt-3 text-sm text-slate-300">
-            No tienes un club activo seleccionado.
-          </p>
-        </div>
-      </section>
-    );
-  }
-
   if (!isAdminOrCaptain) {
     return (
       <section className="space-y-4">
@@ -476,7 +487,6 @@ export default function ClubAnalytics() {
 
           <button
             type="button"
-            aria-label="Volver a home"
             onClick={() => navigate("/home")}
             className="rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/10"
           >
@@ -492,7 +502,7 @@ export default function ClubAnalytics() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-5 min-w-0">
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
             Resumen superior
           </div>
@@ -527,7 +537,7 @@ export default function ClubAnalytics() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-5 min-w-0">
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
             Lectura competitiva
           </div>
@@ -598,9 +608,9 @@ export default function ClubAnalytics() {
           {analytics.resultsPieData.length === 0 ? (
             <ChartEmpty text="Sin datos suficientes para mostrar el gráfico." />
           ) : (
-            <div className="h-[320px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+            <SafeChartContainer height={320}>
+              {(width, height) => (
+                <PieChart width={width} height={height}>
                   <Pie
                     data={analytics.resultsPieData}
                     dataKey="value"
@@ -624,8 +634,8 @@ export default function ClubAnalytics() {
                   />
                   <Legend />
                 </PieChart>
-              </ResponsiveContainer>
-            </div>
+              )}
+            </SafeChartContainer>
           )}
         </ChartCard>
 
@@ -633,9 +643,14 @@ export default function ClubAnalytics() {
           title="Ataque vs defensa"
           subtitle="Comparación global de goles a favor y en contra"
         >
-          <div className="h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={analytics.goalsComparisonData} barGap={20}>
+          <SafeChartContainer height={320}>
+            {(width, height) => (
+              <BarChart
+                width={width}
+                height={height}
+                data={analytics.goalsComparisonData}
+                barGap={20}
+              >
                 <CartesianGrid
                   strokeDasharray="3 3"
                   stroke="rgba(255,255,255,0.08)"
@@ -664,8 +679,8 @@ export default function ClubAnalytics() {
                   radius={[8, 8, 0, 0]}
                 />
               </BarChart>
-            </ResponsiveContainer>
-          </div>
+            )}
+          </SafeChartContainer>
         </ChartCard>
       </div>
 
@@ -677,9 +692,9 @@ export default function ClubAnalytics() {
           {analytics.recentTrendData.length === 0 ? (
             <ChartEmpty text="Aún no hay partidos para mostrar tendencia." />
           ) : (
-            <div className="h-[340px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={analytics.recentTrendData}>
+            <SafeChartContainer height={340}>
+              {(width, height) => (
+                <LineChart width={width} height={height} data={analytics.recentTrendData}>
                   <CartesianGrid
                     strokeDasharray="3 3"
                     stroke="rgba(255,255,255,0.08)"
@@ -723,8 +738,8 @@ export default function ClubAnalytics() {
                     activeDot={{ r: 6 }}
                   />
                 </LineChart>
-              </ResponsiveContainer>
-            </div>
+              )}
+            </SafeChartContainer>
           )}
         </ChartCard>
 
@@ -735,9 +750,11 @@ export default function ClubAnalytics() {
           {analytics.topContribution.length === 0 ? (
             <ChartEmpty text="No hay estadísticas individuales aún." />
           ) : (
-            <div className="h-[340px]">
-              <ResponsiveContainer width="100%" height="100%">
+            <SafeChartContainer height={340}>
+              {(width, height) => (
                 <BarChart
+                  width={width}
+                  height={height}
                   data={analytics.topContribution}
                   layout="vertical"
                   margin={{ top: 10, right: 20, left: 20, bottom: 10 }}
@@ -775,8 +792,8 @@ export default function ClubAnalytics() {
                     radius={[0, 8, 8, 0]}
                   />
                 </BarChart>
-              </ResponsiveContainer>
-            </div>
+              )}
+            </SafeChartContainer>
           )}
         </ChartCard>
       </div>
@@ -964,7 +981,6 @@ export default function ClubAnalytics() {
                     <td className="px-3 py-4">
                       <button
                         type="button"
-                        aria-label={`Ver partido ${row.matchId}`}
                         onClick={() => navigate(`/matches/${row.matchId}`)}
                         className="rounded-xl border border-white/10 px-3 py-2 text-xs hover:bg-white/10"
                       >
@@ -1083,7 +1099,6 @@ function LeaderCard({
 
           <button
             type="button"
-            aria-label={`Ver jugador ${player.userId}`}
             onClick={onOpen}
             className="mt-4 rounded-xl border border-white/10 px-3 py-2 text-xs hover:bg-white/10"
           >
@@ -1117,14 +1132,14 @@ function RoleSummaryCard({ title, count, colorClass, textClass, max }) {
 
 function ChartCard({ title, subtitle, children }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-5 min-w-0">
       <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
         {title}
       </div>
       {subtitle ? (
         <div className="mt-1 text-sm text-slate-400">{subtitle}</div>
       ) : null}
-      <div className="mt-4">{children}</div>
+      <div className="mt-4 min-w-0">{children}</div>
     </div>
   );
 }
@@ -1196,7 +1211,6 @@ function ClubRecentMatchCard({ match, onOpen }) {
 
       <button
         type="button"
-        aria-label={`Ver partido reciente ${match?.matchId || ""}`}
         onClick={onOpen}
         className="mt-4 rounded-xl border border-white/10 px-3 py-2 text-xs hover:bg-white/10"
       >
