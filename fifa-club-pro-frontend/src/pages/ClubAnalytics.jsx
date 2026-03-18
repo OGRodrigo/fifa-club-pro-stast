@@ -29,11 +29,11 @@ import {
  * - GET /clubs/:clubId/members
  * - GET /matches?limit=100
  *
- * Mejora visual:
- * - gráficos de resultados
- * - comparación goles a favor / en contra
- * - evolución reciente
- * - top contribución del plantel
+ * Reglas aplicadas:
+ * - Solo admin/captain pueden entrar.
+ * - Si no hay club activo, se muestra guard claro.
+ * - La analítica competitiva usa partidos jugados.
+ * - La UI se deja más robusta para testing y accesibilidad.
  * =====================================================
  */
 
@@ -64,6 +64,7 @@ export default function ClubAnalytics() {
 
     async function loadData() {
       if (!clubId) {
+        if (!alive) return;
         setMembers([]);
         setMatches([]);
         setErr("");
@@ -127,6 +128,10 @@ export default function ClubAnalytics() {
   }, [clubId]);
 
   const analytics = useMemo(() => {
+    const playedMatchesOnly = matches.filter(
+      (match) => String(match?.status || "played").toLowerCase() === "played"
+    );
+
     const memberRows = members.map((member) => {
       const userId = (member?.user?._id || member?.user || "").toString();
       const username = member?.user?.username || "—";
@@ -140,7 +145,7 @@ export default function ClubAnalytics() {
       let assists = 0;
       const ratings = [];
 
-      for (const match of matches) {
+      for (const match of playedMatchesOnly) {
         const playerStats = Array.isArray(match?.playerStats)
           ? match.playerStats
           : [];
@@ -202,7 +207,7 @@ export default function ClubAnalytics() {
     const recentResults = [];
     const allClubMatches = [];
 
-    for (const match of matches) {
+    for (const match of playedMatchesOnly) {
       const homeId = (match?.homeClub?._id || match?.homeClub || "").toString();
       const awayId = (match?.awayClub?._id || match?.awayClub || "").toString();
 
@@ -408,6 +413,19 @@ export default function ClubAnalytics() {
     };
   }, [members, matches, clubId]);
 
+  if (!clubId) {
+    return (
+      <section className="space-y-4">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+          <h1 className="text-2xl font-bold">Club Analytics</h1>
+          <p className="mt-3 text-sm text-slate-300">
+            No tienes un club activo seleccionado.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   if (!isAdminOrCaptain) {
     return (
       <section className="space-y-4">
@@ -458,6 +476,7 @@ export default function ClubAnalytics() {
 
           <button
             type="button"
+            aria-label="Volver a home"
             onClick={() => navigate("/home")}
             className="rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/10"
           >
@@ -945,6 +964,7 @@ export default function ClubAnalytics() {
                     <td className="px-3 py-4">
                       <button
                         type="button"
+                        aria-label={`Ver partido ${row.matchId}`}
                         onClick={() => navigate(`/matches/${row.matchId}`)}
                         className="rounded-xl border border-white/10 px-3 py-2 text-xs hover:bg-white/10"
                       >
@@ -1063,6 +1083,7 @@ function LeaderCard({
 
           <button
             type="button"
+            aria-label={`Ver jugador ${player.userId}`}
             onClick={onOpen}
             className="mt-4 rounded-xl border border-white/10 px-3 py-2 text-xs hover:bg-white/10"
           >
@@ -1175,6 +1196,7 @@ function ClubRecentMatchCard({ match, onOpen }) {
 
       <button
         type="button"
+        aria-label={`Ver partido reciente ${match?.matchId || ""}`}
         onClick={onOpen}
         className="mt-4 rounded-xl border border-white/10 px-3 py-2 text-xs hover:bg-white/10"
       >

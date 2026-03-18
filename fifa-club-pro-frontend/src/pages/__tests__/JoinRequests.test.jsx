@@ -1,268 +1,233 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
-import { vi, describe, it, expect, beforeEach } from "vitest";
+// src/pages/__tests__/JoinRequests.test.jsx
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import JoinRequests from "../JoinRequests";
-
-const mockGet = vi.fn();
-const mockPut = vi.fn();
-
-const mockToastSuccess = vi.fn();
-const mockToastError = vi.fn();
-
-let mockAuthValue = {
-  clubContext: {g
-    clubId: "club-1",
-    role: "admin",
-  },
-};
+import { api } from "../../api/client";
+import { useAuth } from "../../auth/AuthContext";
+import { useToast } from "../../ui/ToastContext";
 
 vi.mock("../../api/client", () => ({
   api: {
-    get: (...args) => mockGet(...args),
-    put: (...args) => mockPut(...args),
+    get: vi.fn(),
+    put: vi.fn(),
   },
 }));
 
 vi.mock("../../auth/AuthContext", () => ({
-  useAuth: () => mockAuthValue,
+  useAuth: vi.fn(),
 }));
 
 vi.mock("../../ui/ToastContext", () => ({
-  useToast: () => ({
-    success: mockToastSuccess,
-    error: mockToastError,
-  }),
+  useToast: vi.fn(),
 }));
 
-describe("JoinRequests", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    mockAuthValue = {
-      clubContext: {
-        clubId: "club-1",
-        role: "admin",
-      },
-    };
+function renderAs(role = "admin", clubId = "club-1") {
+  useAuth.mockReturnValue({
+    clubContext: {
+      clubId,
+      role,
+    },
   });
 
-  function renderPage() {
-    return render(
-      <MemoryRouter>
-        <JoinRequests />
-      </MemoryRouter>
-    );
-  }
+  return render(<JoinRequests />);
+}
 
-  it("muestra no autorizado si el rol no es admin ni captain", () => {
-    mockAuthValue = {
-      clubContext: {
-        clubId: "club-1",
-        role: "member",
+function makeRequests() {
+  return [
+    {
+      _id: "jr1",
+      createdAt: "2026-03-17T12:00:00.000Z",
+      user: {
+        _id: "u1",
+        username: "rodrigo",
+        gamerTag: "Rodri",
+        platform: "PS5",
+        country: "Chile",
       },
-    };
+    },
+    {
+      _id: "jr2",
+      createdAt: "2026-03-17T13:00:00.000Z",
+      user: {
+        _id: "u2",
+        username: "juanito",
+        gamerTag: "Juan",
+        platform: "PC",
+        country: "Argentina",
+      },
+    },
+  ];
+}
 
-    renderPage();
+function mockRequestsResponse(items) {
+  return {
+    data: {
+      requests: items,
+    },
+  };
+}
 
-    expect(screen.getByText(/solicitudes de ingreso/i)).toBeInTheDocument();
-    expect(screen.getByText(/no autorizado/i)).toBeInTheDocument();
+describe("JoinRequests", () => {
+  const success = vi.fn();
+  const error = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useToast.mockReturnValue({ success, error });
+  });
+
+  it("muestra no autorizado si el rol no es admin ni captain", async () => {
+    renderAs("member");
+
+    expect(
+      await screen.findByText(/No autorizado\./i)
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByRole("heading", { name: /Solicitudes de ingreso/i })
+    ).toBeInTheDocument();
   });
 
   it("carga y muestra solicitudes pendientes", async () => {
-    mockGet.mockResolvedValue({
-      data: {
-        requests: [
-          {
-            _id: "r1",
-            createdAt: "2026-03-15T12:00:00.000Z",
-            user: {
-              _id: "u1",
-              username: "rodrigo",
-              gamerTag: "Rodri",
-              platform: "PS",
-              country: "Chile",
-            },
-          },
-        ],
-      },
-    });
+    api.get.mockResolvedValueOnce(mockRequestsResponse(makeRequests()));
 
-    renderPage();
+    renderAs("admin");
 
     expect(
-      await screen.findByText(/rodri/i)
+      await screen.findByRole("heading", { name: /Solicitudes de ingreso/i })
     ).toBeInTheDocument();
 
-    expect(screen.getByText(/@rodrigo/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /aceptar/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /rechazar/i })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith("/clubs/club-1/join-requests");
+    });
+
+    expect(screen.getByText(/PENDIENTES \(2\)/i)).toBeInTheDocument();
+
+    expect(screen.getByText(/^Rodri$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Juan$/i)).toBeInTheDocument();
+
+    expect(
+      screen.getByText(/@rodrigo\s*·\s*PS5\s*·\s*Chile/i)
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByText(/@juanito\s*·\s*PC\s*·\s*Argentina/i)
+    ).toBeInTheDocument();
+
+    expect(screen.getAllByRole("button", { name: /Aceptar/i })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /Rechazar/i })).toHaveLength(2);
   });
 
   it("muestra estado vacío si no hay solicitudes", async () => {
-    mockGet.mockResolvedValue({
-      data: {
-        requests: [],
-      },
-    });
+    api.get.mockResolvedValueOnce(mockRequestsResponse([]));
 
-    renderPage();
+    renderAs("captain");
 
     expect(
-      await screen.findByText(/no hay solicitudes pendientes por revisar/i)
+      await screen.findByText(/No hay solicitudes pendientes por revisar\./i)
     ).toBeInTheDocument();
+
+    expect(screen.getByText(/PENDIENTES \(0\)/i)).toBeInTheDocument();
   });
 
   it("acepta una solicitud correctamente", async () => {
-    const user = userEvent.setup();
+    api.get
+      .mockResolvedValueOnce(mockRequestsResponse([makeRequests()[0]]))
+      .mockResolvedValueOnce(mockRequestsResponse([]));
 
-    mockGet
-      .mockResolvedValueOnce({
-        data: {
-          requests: [
-            {
-              _id: "r1",
-              createdAt: "2026-03-15T12:00:00.000Z",
-              user: {
-                _id: "u1",
-                username: "rodrigo",
-                gamerTag: "Rodri",
-                platform: "PS",
-                country: "Chile",
-              },
-            },
-          ],
-        },
-      })
-      .mockResolvedValueOnce({
-        data: {
-          requests: [],
-        },
-      });
+    api.put.mockResolvedValueOnce({
+      data: { ok: true },
+    });
 
-    mockPut.mockResolvedValue({ data: { ok: true } });
+    renderAs("admin");
 
-    renderPage();
+    expect(await screen.findByText(/^Rodri$/i)).toBeInTheDocument();
 
-    const acceptButton = await screen.findByRole("button", { name: /aceptar/i });
-    await user.click(acceptButton);
+    const acceptButtons = screen.getAllByRole("button", { name: /Aceptar/i });
+    fireEvent.click(acceptButtons[0]);
 
     await waitFor(() => {
-      expect(mockPut).toHaveBeenCalledWith(
+      expect(api.put).toHaveBeenCalledWith(
         "/clubs/club-1/join-requests/u1",
         { action: "accept" }
       );
     });
 
-    expect(mockToastSuccess).toHaveBeenCalledWith(
-      "Solicitud aceptada correctamente."
-    );
+    expect(success).toHaveBeenCalledWith("Solicitud aceptada correctamente.");
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("rechaza una solicitud correctamente", async () => {
-    const user = userEvent.setup();
+    api.get
+      .mockResolvedValueOnce(mockRequestsResponse([makeRequests()[0]]))
+      .mockResolvedValueOnce(mockRequestsResponse([]));
 
-    mockGet
-      .mockResolvedValueOnce({
-        data: {
-          requests: [
-            {
-              _id: "r1",
-              createdAt: "2026-03-15T12:00:00.000Z",
-              user: {
-                _id: "u1",
-                username: "rodrigo",
-                gamerTag: "Rodri",
-                platform: "PS",
-                country: "Chile",
-              },
-            },
-          ],
-        },
-      })
-      .mockResolvedValueOnce({
-        data: {
-          requests: [],
-        },
-      });
+    api.put.mockResolvedValueOnce({
+      data: { ok: true },
+    });
 
-    mockPut.mockResolvedValue({ data: { ok: true } });
+    renderAs("admin");
 
-    renderPage();
+    expect(await screen.findByText(/^Rodri$/i)).toBeInTheDocument();
 
-    const rejectButton = await screen.findByRole("button", { name: /rechazar/i });
-    await user.click(rejectButton);
+    const rejectButtons = screen.getAllByRole("button", { name: /Rechazar/i });
+    fireEvent.click(rejectButtons[0]);
 
     await waitFor(() => {
-      expect(mockPut).toHaveBeenCalledWith(
+      expect(api.put).toHaveBeenCalledWith(
         "/clubs/club-1/join-requests/u1",
         { action: "reject" }
       );
     });
 
-    expect(mockToastSuccess).toHaveBeenCalledWith(
-      "Solicitud rechazada correctamente."
-    );
+    expect(success).toHaveBeenCalledWith("Solicitud rechazada correctamente.");
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("muestra error si falla la carga inicial", async () => {
-    mockGet.mockRejectedValue({
+    api.get.mockRejectedValueOnce({
       response: {
         data: {
-          message: "Error cargando solicitudes",
+          message: "Error cargando solicitudes backend",
         },
       },
     });
 
-    renderPage();
+    renderAs("admin");
 
     expect(
-      await screen.findByText(/error cargando solicitudes/i)
+      await screen.findByText(/Error cargando solicitudes backend/i)
     ).toBeInTheDocument();
   });
 
   it("muestra error si falla resolver solicitud", async () => {
-    const user = userEvent.setup();
+    api.get.mockResolvedValueOnce(mockRequestsResponse([makeRequests()[0]]));
 
-    mockGet.mockResolvedValue({
-      data: {
-        requests: [
-          {
-            _id: "r1",
-            createdAt: "2026-03-15T12:00:00.000Z",
-            user: {
-              _id: "u1",
-              username: "rodrigo",
-              gamerTag: "Rodri",
-              platform: "PS",
-              country: "Chile",
-            },
-          },
-        ],
-      },
-    });
-
-    mockPut.mockRejectedValue({
+    api.put.mockRejectedValueOnce({
       response: {
         data: {
-          message: "Error resolviendo solicitud",
+          message: "No se pudo resolver la solicitud",
         },
       },
     });
 
-    renderPage();
+    renderAs("admin");
 
-    const acceptButton = await screen.findByRole("button", { name: /aceptar/i });
-    await user.click(acceptButton);
+    expect(await screen.findByText(/^Rodri$/i)).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(mockToastError).toHaveBeenCalledWith(
-        "Error resolviendo solicitud"
-      );
-    });
+    const acceptButtons = screen.getAllByRole("button", { name: /Aceptar/i });
+    fireEvent.click(acceptButtons[0]);
 
     expect(
-      await screen.findByText(/error resolviendo solicitud/i)
+      await screen.findByText(/No se pudo resolver la solicitud/i)
     ).toBeInTheDocument();
+
+    expect(error).toHaveBeenCalledWith("No se pudo resolver la solicitud");
   });
 });
