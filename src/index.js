@@ -13,12 +13,13 @@ async function startServer() {
     }
 
     await mongoose.connect(process.env.MONGO_URI);
+
     console.log("✅ MongoDB conectado");
+    console.log(`🧪 NODE_ENV=${process.env.NODE_ENV || "(no definido)"}`);
+    console.log("🔐 JWT_SECRET loaded?", Boolean(process.env.JWT_SECRET));
 
     server = app.listen(PORT, () => {
-      console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
-      console.log(`🧪 NODE_ENV=${process.env.NODE_ENV || "(no definido)"}`);
-      console.log("JWT_SECRET loaded?", Boolean(process.env.JWT_SECRET));
+      console.log(`🚀 Servidor iniciado en puerto ${PORT}`);
     });
   } catch (err) {
     console.error("❌ Error al iniciar servidor:", err);
@@ -28,19 +29,26 @@ async function startServer() {
 
 async function shutdown(signal) {
   try {
-    console.log(`\n🛑 Recibido ${signal}. Cerrando...`);
+    console.log(`\n🛑 Recibido ${signal}. Cerrando servidor...`);
 
     if (server) {
-      await new Promise((resolve) => server.close(resolve));
+      await new Promise((resolve, reject) => {
+        server.close((err) => {
+          if (err) return reject(err);
+          resolve();
+        });
+      });
       console.log("✅ HTTP server cerrado");
     }
 
-    await mongoose.connection.close(false);
-    console.log("✅ Mongo connection cerrada");
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.connection.close(false);
+      console.log("✅ Mongo connection cerrada");
+    }
 
     process.exit(0);
-  } catch (e) {
-    console.error("❌ Error en shutdown:", e);
+  } catch (err) {
+    console.error("❌ Error en shutdown:", err);
     process.exit(1);
   }
 }

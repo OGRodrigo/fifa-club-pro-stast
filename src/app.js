@@ -23,8 +23,15 @@ const app = express();
 // ==============================
 // 2) Configuración CORS
 // ==============================
+// Permite definir múltiples orígenes separados por coma:
+// CLIENT_URL=https://tu-front.vercel.app,https://tu-dominio.com
+const envOrigins = (process.env.CLIENT_URL || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 const allowedOrigins = [
-  process.env.CLIENT_URL,
+  ...envOrigins,
   "http://localhost:5173",
 ].filter(Boolean);
 
@@ -36,6 +43,7 @@ app.use(express.json());
 app.use(
   cors({
     origin: (origin, callback) => {
+      // Permitir requests sin origin (Postman, health checks, server-to-server)
       if (!origin) {
         return callback(null, true);
       }
@@ -69,7 +77,18 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 // ==============================
-// 5) Rutas
+// 5) Health check
+// ==============================
+app.get("/health", (req, res) => {
+  return res.status(200).json({
+    ok: true,
+    service: "fifa-club-pro-backend",
+    env: process.env.NODE_ENV || "development",
+  });
+});
+
+// ==============================
+// 6) Rutas
 // ==============================
 app.use("/audit", auditRoutes);
 app.use("/auth", authRoutes);
@@ -86,7 +105,7 @@ app.use("/clubs", membersRoutes);
 app.use("/clubs", clubsRoutes);
 
 // ==============================
-// 6) 404 handler
+// 7) 404 handler
 // ==============================
 app.use((req, res) => {
   return res.status(404).json({
@@ -96,7 +115,7 @@ app.use((req, res) => {
 });
 
 // ==============================
-// 7) Error handler estándar
+// 8) Error handler estándar
 // ==============================
 app.use((err, req, res, next) => {
   console.error("UNHANDLED ERROR:", err);
