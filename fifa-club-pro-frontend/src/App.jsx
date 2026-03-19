@@ -16,7 +16,7 @@ import CreateClub from "./pages/CreateClub";
 import Matches from "./pages/Matches";
 import MatchDetail from "./pages/MatchDetail";
 import ClubAnalytics from "./pages/ClubAnalytics";
-
+import ImportMatchImages from "./pages/ImportMatchImages";
 import ProtectedRoute from "./auth/ProtectedRoute";
 
 function Private({ children }) {
@@ -139,4 +139,6 @@ export default function App() {
       </Routes>
     </BrowserRouter>
   );
+
+  <Route path="/matches/import-images" element={<ImportMatchImages />} />
 }
