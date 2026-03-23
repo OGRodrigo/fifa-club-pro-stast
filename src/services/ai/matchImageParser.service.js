@@ -32,34 +32,91 @@ const { readImageText } = require("./ocr.service");
  * - 2–1
  * - 2 1 (solo si contexto ayuda)
  */
+function isValidScoreNumber(value) {
+  return (
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 30
+  );
+}
+
 function extractScoreFromText(text = "") {
-  const normalized = String(text).replace(/\s+/g, " ").trim();
+  const normalized = String(text)
+    .replace(/\r/g, "\n")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  const patterns = [
-    /(\d{1,2})\s*[:\-–]\s*(\d{1,2})/,
-    /\b(\d{1,2})\s+(\d{1,2})\b/,
-  ];
+  if (!normalized) {
+    return {
+      home: null,
+      away: null,
+      method: null,
+      confidence: 0,
+    };
+  }
 
-  for (const pattern of patterns) {
-    const match = normalized.match(pattern);
-    if (!match) continue;
+  // 1) Máxima prioridad:
+  // "KKTeam Vs 3 : 7 Vs Fecha Libre"
+  const vsScoreVsMatch = normalized.match(
+    /.+?\bvs\b\s*(\d{1,2})\s*[:\-–]\s*(\d{1,2})\s*\bvs\b\s*.+/i
+  );
 
-    const home = Number(match[1]);
-    const away = Number(match[2]);
+  if (vsScoreVsMatch) {
+    const home = Number(vsScoreVsMatch[1]);
+    const away = Number(vsScoreVsMatch[2]);
 
-    if (
-      Number.isInteger(home) &&
-      Number.isInteger(away) &&
-      home >= 0 &&
-      away >= 0 &&
-      home <= 30 &&
-      away <= 30
-    ) {
-      return { home, away };
+    if (isValidScoreNumber(home) && isValidScoreNumber(away)) {
+      return {
+        home,
+        away,
+        method: "vs_score_vs",
+        confidence: 0.9,
+      };
     }
   }
 
-  return { home: null, away: null };
+  // 2) Segunda prioridad:
+  // score clásico "3 : 7"
+  const classicMatch = normalized.match(/(\d{1,2})\s*[:\-–]\s*(\d{1,2})/);
+
+  if (classicMatch) {
+    const home = Number(classicMatch[1]);
+    const away = Number(classicMatch[2]);
+
+    if (isValidScoreNumber(home) && isValidScoreNumber(away)) {
+      return {
+        home,
+        away,
+        method: "classic_pair",
+        confidence: 0.55,
+      };
+    }
+  }
+
+  // 3) Última prioridad:
+  // "3 7" solo como fallback
+  const looseMatch = normalized.match(/\b(\d{1,2})\s+(\d{1,2})\b/);
+
+  if (looseMatch) {
+    const home = Number(looseMatch[1]);
+    const away = Number(looseMatch[2]);
+
+    if (isValidScoreNumber(home) && isValidScoreNumber(away)) {
+      return {
+        home,
+        away,
+        method: "loose_pair",
+        confidence: 0.25,
+      };
+    }
+  }
+
+  return {
+    home: null,
+    away: null,
+    method: null,
+    confidence: 0,
+  };
 }
 
 /**
@@ -176,33 +233,6 @@ function extractClubNamesFromText(text = "") {
     home: null,
     away: null,
   };
-}
-
-function extractClubCandidates(lines = []) {
-  return lines
-    .map((line) => cleanClubCandidate(line?.text || ""))
-    .filter(Boolean)
-    .filter((line) => line.length >= 2 && line.length <= 40)
-    .filter((line) => !/^\d+$/.test(line))
-    .filter(
-      (line) =>
-        ![
-          "full time",
-          "match finished",
-          "final",
-          "summary",
-          "overview",
-          "resumen",
-          "posesion",
-          "possession",
-          "shots",
-          "passes",
-          "defense",
-          "defensa",
-          "stats",
-          "statistics",
-        ].includes(line.toLowerCase())
-    );
 }
 
 function extractClubNamesFromLines(lines = [], text = "") {
@@ -456,7 +486,7 @@ async function parseSingleImage(image, meta = {}) {
         minute: null,
         status: null,
         season: meta.season || null,
-        stats,
+                stats: extractStatsFromText(""),
       },
       confidence: buildFieldConfidence(baseConfidence),
       notes: [
@@ -501,6 +531,8 @@ async function parseSingleImage(image, meta = {}) {
   "OCR ejecutado correctamente.",
   `Texto OCR preview: ${text.slice(0, 120)}`,
   `Score detectado: ${score.home ?? "null"} - ${score.away ?? "null"}`,
+  `Método score: ${score.method ?? "null"}`,
+  `Confianza score imagen: ${score.confidence ?? 0}`,
   `Clubes detectados: ${clubs.home ?? "null"} vs ${clubs.away ?? "null"}`,
   `Tiros detectados: ${stats.shotsHome ?? "null"} - ${stats.shotsAway ?? "null"}`,
 ];

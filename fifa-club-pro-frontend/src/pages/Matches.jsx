@@ -109,14 +109,20 @@ const createEmptyPlayerStat = (clubId = "") => ({
 });
 
 const createInitialCreateState = (clubId = "") => ({
+  mySide: "home",
+  opponentClub: "",
+
   homeClub: clubId || "",
   awayClub: "",
+
   date: "",
   stadium: "",
   competition: "League",
   status: "played",
   scoreHome: 0,
   scoreAway: 0,
+  importedScoreForMyClub: null,
+importedScoreForOpponent: null,
 
   teamStats: {
     home: createEmptyTeamStats(),
@@ -397,6 +403,23 @@ function isAiDraftEffectivelyEmpty(extracted) {
   );
 }
 
+function isLowConfidenceDraft(extracted) {
+  const overall = Number(extracted?.confidence?.overall ?? 0);
+  return overall < 0.5;
+}
+
+function isInvalidDetectedClubName(name = "") {
+  const normalized = String(name || "").trim().toLowerCase();
+
+  if (!normalized) return true;
+
+  return (
+    normalized.includes("fecha libre") ||
+    normalized.includes("free") ||
+    normalized.includes("bye")
+  );
+}
+
 function mapAiDraftToCreateState({ extracted, myClubId, clubs }) {
   const fallback = createInitialCreateState(myClubId || "");
   const draft = extracted?.matchDraft;
@@ -405,67 +428,69 @@ function mapAiDraftToCreateState({ extracted, myClubId, clubs }) {
     return fallback;
   }
 
-  const homeClubName =
-    draft?.homeClub?.normalizedName || draft?.homeClub?.name || "";
-  const awayClubName =
-    draft?.awayClub?.normalizedName || draft?.awayClub?.name || "";
-
-  const homeClubId = findClubIdByName(clubs, homeClubName, myClubId);
-  const awayClubId = findClubIdByName(clubs, awayClubName, "");
+const finalScoreHome = normalizeNumber(draft?.scoreHome, 0);
+const finalScoreAway = normalizeNumber(draft?.scoreAway, 0);
 
   return {
-    homeClub: homeClubId || myClubId || "",
-    awayClub: awayClubId || "",
-    date: "",
-    stadium: "",
-    competition: "League",
-    status:
-      draft?.status === "final"
-        ? "played"
-        : safeString(draft?.status, "played"),
-    scoreHome: normalizeNumber(draft?.scoreHome, 0),
-    scoreAway: normalizeNumber(draft?.scoreAway, 0),
+  mySide: fallback.mySide,
+  opponentClub: fallback.opponentClub,
+
+  homeClub: fallback.homeClub,
+  awayClub: fallback.awayClub,
+
+  date: "",
+  stadium: "",
+  competition: "League",
+  status:
+    draft?.status === "final"
+      ? "played"
+      : safeString(draft?.status, "played"),
+  scoreHome: fallback.scoreHome,
+scoreAway: fallback.scoreAway,
+
+importedScoreForMyClub: finalScoreHome,
+importedScoreForOpponent: finalScoreAway,
 
     teamStats: {
       home: withCalculatedTeamPercents({
-        ...createEmptyTeamStats(),
-        possession: normalizeNumber(draft?.stats?.possessionHome, 0),
-        shots: normalizeNumber(draft?.stats?.shotsHome, 0),
-        shotsOnTarget: normalizeNumber(draft?.stats?.shotsOnTargetHome, 0),
-        shotAccuracy: normalizeNumber(draft?.stats?.shotAccuracyHome, 0),
-        expectedGoals: normalizeNumber(draft?.stats?.xgHome, 0),
-        passes: normalizeNumber(draft?.stats?.passesHome, 0),
-        passAccuracy: normalizeNumber(draft?.stats?.passAccuracyHome, 0),
-        tackles: normalizeNumber(draft?.stats?.tacklesHome, 0),
-        recoveries: normalizeNumber(draft?.stats?.recoveriesHome, 0),
-        saves: normalizeNumber(draft?.stats?.savesHome, 0),
-        fouls: normalizeNumber(draft?.stats?.foulsHome, 0),
-        offsides: normalizeNumber(draft?.stats?.offsidesHome, 0),
-        corners: normalizeNumber(draft?.stats?.cornersHome, 0),
-        yellowCards: normalizeNumber(draft?.stats?.yellowCardsHome, 0),
-        redCards: normalizeNumber(draft?.stats?.redCardsHome, 0),
-        dribbleSuccess: normalizeNumber(draft?.stats?.dribbleSuccessHome, 0),
-      }),
+  ...createEmptyTeamStats(),
+  possession: hasReliableStats ? normalizeNumber(draft?.stats?.possessionHome, 0) : 0,
+  shots: hasReliableStats ? normalizeNumber(draft?.stats?.shotsHome, 0) : 0,
+  shotsOnTarget: hasReliableStats ? normalizeNumber(draft?.stats?.shotsOnTargetHome, 0) : 0,
+  shotAccuracy: hasReliableStats ? normalizeNumber(draft?.stats?.shotAccuracyHome, 0) : 0,
+  expectedGoals: hasReliableStats ? normalizeNumber(draft?.stats?.xgHome, 0) : 0,
+  passes: hasReliableStats ? normalizeNumber(draft?.stats?.passesHome, 0) : 0,
+  passAccuracy: hasReliableStats ? normalizeNumber(draft?.stats?.passAccuracyHome, 0) : 0,
+  tackles: hasReliableStats ? normalizeNumber(draft?.stats?.tacklesHome, 0) : 0,
+  recoveries: hasReliableStats ? normalizeNumber(draft?.stats?.recoveriesHome, 0) : 0,
+  saves: hasReliableStats ? normalizeNumber(draft?.stats?.savesHome, 0) : 0,
+  fouls: hasReliableStats ? normalizeNumber(draft?.stats?.foulsHome, 0) : 0,
+  offsides: hasReliableStats ? normalizeNumber(draft?.stats?.offsidesHome, 0) : 0,
+  corners: hasReliableStats ? normalizeNumber(draft?.stats?.cornersHome, 0) : 0,
+  yellowCards: hasReliableStats ? normalizeNumber(draft?.stats?.yellowCardsHome, 0) : 0,
+  redCards: hasReliableStats ? normalizeNumber(draft?.stats?.redCardsHome, 0) : 0,
+  dribbleSuccess: hasReliableStats ? normalizeNumber(draft?.stats?.dribbleSuccessHome, 0) : 0,
+}),
 
       away: withCalculatedTeamPercents({
-        ...createEmptyTeamStats(),
-        possession: normalizeNumber(draft?.stats?.possessionAway, 0),
-        shots: normalizeNumber(draft?.stats?.shotsAway, 0),
-        shotsOnTarget: normalizeNumber(draft?.stats?.shotsOnTargetAway, 0),
-        shotAccuracy: normalizeNumber(draft?.stats?.shotAccuracyAway, 0),
-        expectedGoals: normalizeNumber(draft?.stats?.xgAway, 0),
-        passes: normalizeNumber(draft?.stats?.passesAway, 0),
-        passAccuracy: normalizeNumber(draft?.stats?.passAccuracyAway, 0),
-        tackles: normalizeNumber(draft?.stats?.tacklesAway, 0),
-        recoveries: normalizeNumber(draft?.stats?.recoveriesAway, 0),
-        saves: normalizeNumber(draft?.stats?.savesAway, 0),
-        fouls: normalizeNumber(draft?.stats?.foulsAway, 0),
-        offsides: normalizeNumber(draft?.stats?.offsidesAway, 0),
-        corners: normalizeNumber(draft?.stats?.cornersAway, 0),
-        yellowCards: normalizeNumber(draft?.stats?.yellowCardsAway, 0),
-        redCards: normalizeNumber(draft?.stats?.redCardsAway, 0),
-        dribbleSuccess: normalizeNumber(draft?.stats?.dribbleSuccessAway, 0),
-      }),
+  ...createEmptyTeamStats(),
+  possession: hasReliableStats ? normalizeNumber(draft?.stats?.possessionAway, 0) : 0,
+  shots: hasReliableStats ? normalizeNumber(draft?.stats?.shotsAway, 0) : 0,
+  shotsOnTarget: hasReliableStats ? normalizeNumber(draft?.stats?.shotsOnTargetAway, 0) : 0,
+  shotAccuracy: hasReliableStats ? normalizeNumber(draft?.stats?.shotAccuracyAway, 0) : 0,
+  expectedGoals: hasReliableStats ? normalizeNumber(draft?.stats?.xgAway, 0) : 0,
+  passes: hasReliableStats ? normalizeNumber(draft?.stats?.passesAway, 0) : 0,
+  passAccuracy: hasReliableStats ? normalizeNumber(draft?.stats?.passAccuracyAway, 0) : 0,
+  tackles: hasReliableStats ? normalizeNumber(draft?.stats?.tacklesAway, 0) : 0,
+  recoveries: hasReliableStats ? normalizeNumber(draft?.stats?.recoveriesAway, 0) : 0,
+  saves: hasReliableStats ? normalizeNumber(draft?.stats?.savesAway, 0) : 0,
+  fouls: hasReliableStats ? normalizeNumber(draft?.stats?.foulsAway, 0) : 0,
+  offsides: hasReliableStats ? normalizeNumber(draft?.stats?.offsidesAway, 0) : 0,
+  corners: hasReliableStats ? normalizeNumber(draft?.stats?.cornersAway, 0) : 0,
+  yellowCards: hasReliableStats ? normalizeNumber(draft?.stats?.yellowCardsAway, 0) : 0,
+  redCards: hasReliableStats ? normalizeNumber(draft?.stats?.redCardsAway, 0) : 0,
+  dribbleSuccess: hasReliableStats ? normalizeNumber(draft?.stats?.dribbleSuccessAway, 0) : 0,
+}),
     },
 
     lineups: {
@@ -564,14 +589,8 @@ export default function Matches() {
     }));
   }, [myMembers]);
 
-  const myClubIsHome = createState.homeClub === myClubId;
-  const myClubIsAway = createState.awayClub === myClubId;
-  const myClubSideId = myClubIsHome
-    ? createState.homeClub
-    : myClubIsAway
-    ? createState.awayClub
-    : "";
-  const myCreateSide = myClubIsHome ? "home" : myClubIsAway ? "away" : "";
+  const myCreateSide = createState.mySide === "away" ? "away" : "home";
+const myClubSideId = myClubId;
 
   /* =====================================================
    * Carga base: clubs + members del club activo
@@ -691,11 +710,19 @@ export default function Matches() {
    * Sincronización createState
    * ===================================================== */
   useEffect(() => {
-    if (!myClubId) return;
+  if (!myClubId) return;
 
-    setCreateState((prev) => ({
+  setCreateState((prev) => {
+    const nextHomeClub =
+      prev.mySide === "away" ? prev.opponentClub || "" : myClubId;
+
+    const nextAwayClub =
+      prev.mySide === "away" ? myClubId : prev.opponentClub || "";
+
+    return {
       ...prev,
-      homeClub: prev.homeClub || myClubId,
+      homeClub: nextHomeClub,
+      awayClub: nextAwayClub,
       playerStats:
         prev.playerStats.length > 0
           ? prev.playerStats.map((ps) => ({
@@ -703,20 +730,65 @@ export default function Matches() {
               club: myClubId,
             }))
           : [createEmptyPlayerStat(myClubId)],
-    }));
-  }, [myClubId]);
+    };
+  });
+}, [myClubId]);
 
   useEffect(() => {
-    if (!myClubId) return;
+  if (!myClubId) return;
 
-    setCreateState((prev) => ({
+  setCreateState((prev) => {
+    const nextHomeClub =
+      prev.mySide === "away" ? prev.opponentClub || "" : myClubId;
+
+    const nextAwayClub =
+      prev.mySide === "away" ? myClubId : prev.opponentClub || "";
+
+    const importedMine =
+      prev.importedScoreForMyClub === null ||
+      prev.importedScoreForMyClub === undefined
+        ? null
+        : normalizeNumber(prev.importedScoreForMyClub, 0);
+
+    const importedOpponent =
+      prev.importedScoreForOpponent === null ||
+      prev.importedScoreForOpponent === undefined
+        ? null
+        : normalizeNumber(prev.importedScoreForOpponent, 0);
+
+    const nextScoreHome =
+      importedMine === null || importedOpponent === null
+        ? prev.scoreHome
+        : prev.mySide === "away"
+        ? importedOpponent
+        : importedMine;
+
+    const nextScoreAway =
+      importedMine === null || importedOpponent === null
+        ? prev.scoreAway
+        : prev.mySide === "away"
+        ? importedMine
+        : importedOpponent;
+
+    return {
       ...prev,
+      homeClub: nextHomeClub,
+      awayClub: nextAwayClub,
+      scoreHome: nextScoreHome,
+      scoreAway: nextScoreAway,
       playerStats: prev.playerStats.map((ps) => ({
         ...ps,
         club: myClubId,
       })),
-    }));
-  }, [myClubSideId, myClubId]);
+    };
+  });
+}, [
+  myClubId,
+  createState.mySide,
+  createState.opponentClub,
+  createState.importedScoreForMyClub,
+  createState.importedScoreForOpponent,
+]);
 
   /* =====================================================
    * Helpers de create
@@ -736,9 +808,13 @@ export default function Matches() {
     if (!myClubId) return "No tienes club activo.";
     if (!isAdminOrCaptain) return "Solo admin o captain pueden crear partidos.";
 
-    if (!createState.homeClub || !createState.awayClub) {
-      return "Debes seleccionar homeClub y awayClub.";
-    }
+    if (!createState.opponentClub) {
+  return "Debes seleccionar el club rival.";
+}
+
+if (!createState.homeClub || !createState.awayClub) {
+  return "No se pudo resolver homeClub y awayClub.";
+}
 
     if (createState.homeClub === createState.awayClub) {
       return "homeClub y awayClub no pueden ser el mismo.";
@@ -794,37 +870,42 @@ async function handleImportMatchImages() {
 
     const extracted = extractMatchDraftFromAiResponse(data);
 
-    if (!extracted) {
-      setImportErr(
-        data?.message ||
-          "La IA respondió, pero no devolvió un borrador utilizable."
-      );
-      setImportOk("");
-      return;
-    }
+if (!extracted) {
+  setImportErr(
+    data?.message ||
+      "La IA respondió, pero no devolvió un borrador utilizable."
+  );
+  setImportOk("");
+  return;
+}
 
-    const draftIsEmpty = isAiDraftEffectivelyEmpty(extracted);
+const draftIsEmpty = isAiDraftEffectivelyEmpty(extracted);
+const lowConfidence = isLowConfidenceDraft(extracted);
 
-    const nextState = mapAiDraftToCreateState({
-      extracted,
-      myClubId,
-      clubs,
-    });
+const nextState = mapAiDraftToCreateState({
+  extracted,
+  myClubId,
+  clubs,
+});
 
-    setCreateState(nextState);
-    setLastImportedDraft(extracted);
-    setCreateMode("manual");
+setCreateState(nextState);
+setLastImportedDraft(extracted);
+setCreateMode("manual");
 
-    if (draftIsEmpty) {
-      setImportOk(
-        "Imágenes procesadas correctamente. La integración IA base está activa, pero esta versión aún no extrae datos reales automáticamente."
-      );
-    } else {
-      setImportOk(
-        data?.message ||
-          "Borrador importado correctamente. Revisa y guarda el partido."
-      );
-    }
+if (draftIsEmpty) {
+  setImportOk(
+    "Imágenes procesadas correctamente, pero no se detectaron datos confiables para rellenar automáticamente."
+  );
+} else if (lowConfidence) {
+  setImportOk(
+    "La IA generó un borrador con baja confianza. Revisa los datos antes de guardar."
+  );
+} else {
+  setImportOk(
+    data?.message ||
+      "Borrador importado correctamente. Revisa y guarda el partido."
+  );
+}
   } catch (error) {
     setImportErr(
       error?.response?.data?.message ||
@@ -1418,430 +1499,43 @@ async function handleImportMatchImages() {
         ) : null}
       </div>
 
-      {/* Crear partido */}
+            {/* Crear partido */}
       {isAdminOrCaptain ? (
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
           <h2 className="text-xl font-semibold">Crear partido</h2>
 
-          {/* Selector de modo */}
-          <div className="mt-4 flex flex-wrap gap-3">
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
             <button
               type="button"
-              onClick={() => {
-                setCreateMode("manual");
-                setImportErr("");
-                setImportOk("");
-              }}
-              className={`rounded-xl border px-4 py-2 text-sm ${
-                createMode === "manual"
-                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
-                  : "border-white/10 hover:bg-white/10"
-              }`}
+              onClick={() => navigate("/matches/create/manual")}
+              className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 text-left transition hover:bg-emerald-500/10"
             >
-              Manual
+              <div className="text-base font-semibold text-emerald-100">
+                Ingresar datos manuales
+              </div>
+
+              <p className="mt-2 text-sm text-slate-300">
+                Crear el partido completando rival, local/visita, score, stats,
+                alineación y estadísticas de jugadores.
+              </p>
             </button>
 
             <button
               type="button"
-              onClick={() => {
-                setCreateMode("images");
-                setCreateErr("");
-                setCreateOk("");
-              }}
-              className={`rounded-xl border px-4 py-2 text-sm ${
-                createMode === "images"
-                  ? "border-sky-500/40 bg-sky-500/10 text-sky-200"
-                  : "border-white/10 hover:bg-white/10"
-              }`}
+              onClick={() => navigate("/matches/create/images")}
+              className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-5 text-left transition hover:bg-sky-500/10"
             >
-              Importar por imágenes
+              <div className="text-base font-semibold text-sky-100">
+                Ingresar datos por imágenes
+              </div>
+
+              <p className="mt-2 text-sm text-slate-300">
+                Subir capturas para que la IA intente detectar marcador y
+                estadísticas, usando un flujo guiado.
+              </p>
             </button>
           </div>
-
-          {createErr ? (
-            <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-              {createErr}
-            </div>
-          ) : null}
-
-          {createOk ? (
-            <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-              {createOk}
-            </div>
-          ) : null}
-
-          {/* Panel IA */}
-          {createMode === "images" ? (
-            <div className="mt-4 rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4">
-              <h3 className="font-semibold text-sky-100">
-                Importación por imágenes
-              </h3>
-
-              <p className="mt-1 text-sm text-slate-300">
-                Sube capturas del partido. La IA intentará generar un borrador y
-                rellenar el formulario.
-              </p>
-
-              {importErr ? (
-                <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-                  {importErr}
-                </div>
-              ) : null}
-
-              {importOk ? (
-                <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-                  {importOk}
-                </div>
-              ) : null}
-
-              <div className="mt-4 space-y-4">
-                <label className="block space-y-2">
-                  <span className="text-sm text-slate-300">Imágenes</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files || []);
-                      setImportImages(files);
-                    }}
-                    className="block w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm"
-                  />
-                </label>
-
-                {importImages.length > 0 ? (
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-300">
-                    {importImages.length} imagen(es) seleccionada(s)
-                  </div>
-                ) : null}
-
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={handleImportMatchImages}
-                    disabled={importLoading || importImages.length === 0}
-                    className="rounded-xl bg-sky-600 px-5 py-2.5 font-medium hover:bg-sky-500 disabled:opacity-50"
-                  >
-                    {importLoading ? "Procesando..." : "Procesar imágenes"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setImportImages([]);
-                      setImportErr("");
-                      setImportOk("");
-                      setLastImportedDraft(null);
-                    }}
-                    disabled={importLoading}
-                    className="rounded-xl border border-white/10 px-5 py-2.5 hover:bg-white/10 disabled:opacity-50"
-                  >
-                    Limpiar importación
-                  </button>
-                </div>
-
-                {lastImportedDraft ? (
-                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm text-emerald-100">
-                    Se cargó un borrador IA en el formulario manual. Revísalo
-                    antes de guardar.
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-
-          <form onSubmit={handleCreateMatch} className="mt-4 space-y-6">
-            {/* Datos base */}
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <h3 className="font-semibold">1. Datos base</h3>
-
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <FieldSelect
-                  label="Home club"
-                  value={createState.homeClub}
-                  onChange={(value) =>
-                    setCreateState((prev) => ({ ...prev, homeClub: value }))
-                  }
-                  options={clubOptions}
-                  disabled={!isAdminOrCaptain}
-                />
-
-                <FieldSelect
-                  label="Away club"
-                  value={createState.awayClub}
-                  onChange={(value) =>
-                    setCreateState((prev) => ({ ...prev, awayClub: value }))
-                  }
-                  options={clubOptions}
-                  disabled={!isAdminOrCaptain}
-                />
-
-                <FieldInput
-                  label="Fecha y hora"
-                  type="datetime-local"
-                  value={createState.date}
-                  onChange={(value) =>
-                    setCreateState((prev) => ({ ...prev, date: value }))
-                  }
-                  disabled={!isAdminOrCaptain}
-                />
-
-                <FieldInput
-                  label="Estadio"
-                  value={createState.stadium}
-                  onChange={(value) =>
-                    setCreateState((prev) => ({ ...prev, stadium: value }))
-                  }
-                  disabled={!isAdminOrCaptain}
-                />
-
-                <FieldInput
-                  label="Competición"
-                  value={createState.competition}
-                  onChange={(value) =>
-                    setCreateState((prev) => ({ ...prev, competition: value }))
-                  }
-                  disabled={!isAdminOrCaptain}
-                />
-
-                <FieldSelectSimple
-                  label="Estado"
-                  value={createState.status}
-                  onChange={(value) =>
-                    setCreateState((prev) => ({ ...prev, status: value }))
-                  }
-                  options={[
-                    { value: "played", label: "played" },
-                    { value: "scheduled", label: "scheduled" },
-                    { value: "cancelled", label: "cancelled" },
-                  ]}
-                  disabled={!isAdminOrCaptain}
-                />
-
-                <FieldInput
-                  label="Score home"
-                  type="number"
-                  value={createState.scoreHome}
-                  onChange={(value) =>
-                    setCreateState((prev) => ({ ...prev, scoreHome: value }))
-                  }
-                  disabled={!isAdminOrCaptain}
-                />
-
-                <FieldInput
-                  label="Score away"
-                  type="number"
-                  value={createState.scoreAway}
-                  onChange={(value) =>
-                    setCreateState((prev) => ({ ...prev, scoreAway: value }))
-                  }
-                  disabled={!isAdminOrCaptain}
-                />
-              </div>
-            </div>
-
-            {/* Team stats */}
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <h3 className="font-semibold">2. Team stats</h3>
-              <p className="mt-1 text-sm text-slate-400">
-                Aquí sí puedes cargar stats de ambos clubes si la captura las
-                muestra.
-              </p>
-
-              <div className="mt-4 grid gap-6 lg:grid-cols-2">
-                <TeamStatsEditor
-                  title="Home"
-                  stats={createState.teamStats.home}
-                  onChange={(field, value) =>
-                    setCreateState((prev) => ({
-                      ...prev,
-                      teamStats: {
-                        ...prev.teamStats,
-                        home: withCalculatedTeamPercents({
-                          ...prev.teamStats.home,
-                          [field]: value,
-                        }),
-                      },
-                    }))
-                  }
-                />
-
-                <TeamStatsEditor
-                  title="Away"
-                  stats={createState.teamStats.away}
-                  onChange={(field, value) =>
-                    setCreateState((prev) => ({
-                      ...prev,
-                      teamStats: {
-                        ...prev.teamStats,
-                        away: withCalculatedTeamPercents({
-                          ...prev.teamStats.away,
-                          [field]: value,
-                        }),
-                      },
-                    }))
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Lineups */}
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <h3 className="font-semibold">3. Lineup de mi club</h3>
-
-              <div className="mt-4">
-                {!myCreateSide ? (
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-400">
-                    Selecciona primero si tu club será home o away para cargar
-                    la alineación.
-                  </div>
-                ) : (
-                  <LineupEditor
-                    title={`Lineup de mi club (${
-                      myCreateSide === "home" ? "home" : "away"
-                    })`}
-                    lineup={createState.lineups[myCreateSide]}
-                    memberOptions={memberOptions}
-                    onFormationChange={(value) =>
-                      setCreateState((prev) => ({
-                        ...prev,
-                        lineups: {
-                          ...prev.lineups,
-                          [myCreateSide]: {
-                            ...prev.lineups[myCreateSide],
-                            formation: value,
-                          },
-                        },
-                      }))
-                    }
-                    onAdd={() =>
-                      setCreateState((prev) => ({
-                        ...prev,
-                        lineups: {
-                          ...prev.lineups,
-                          [myCreateSide]: {
-                            ...prev.lineups[myCreateSide],
-                            players: [
-                              ...prev.lineups[myCreateSide].players,
-                              createEmptyLineupPlayer(),
-                            ],
-                          },
-                        },
-                      }))
-                    }
-                    onRemove={(index) =>
-                      setCreateState((prev) => ({
-                        ...prev,
-                        lineups: {
-                          ...prev.lineups,
-                          [myCreateSide]: {
-                            ...prev.lineups[myCreateSide],
-                            players: prev.lineups[myCreateSide].players.filter(
-                              (_, i) => i !== index
-                            ),
-                          },
-                        },
-                      }))
-                    }
-                    onPlayerChange={(index, patch) =>
-                      setCreateState((prev) => ({
-                        ...prev,
-                        lineups: {
-                          ...prev.lineups,
-                          [myCreateSide]: {
-                            ...prev.lineups[myCreateSide],
-                            players: prev.lineups[myCreateSide].players.map(
-                              (p, i) => (i === index ? { ...p, ...patch } : p)
-                            ),
-                          },
-                        },
-                      }))
-                    }
-                  />
-                )}
-              </div>
-            </div>
-
-            {/* Player stats */}
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold">4. Player stats de mi club</h3>
-                  <p className="mt-1 text-sm text-slate-400">
-                    Aquí solo se cargan jugadores de tu club.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setCreateState((prev) => ({
-                      ...prev,
-                      playerStats: [
-                        ...prev.playerStats,
-                        createEmptyPlayerStat(myClubId),
-                      ],
-                    }))
-                  }
-                  className="rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/10"
-                  disabled={!isAdminOrCaptain}
-                >
-                  Agregar jugador
-                </button>
-              </div>
-
-              <div className="mt-4 space-y-4">
-                {createState.playerStats.map((ps, index) => (
-                  <PlayerStatEditor
-                    key={`create-ps-${index}`}
-                    title={`Jugador ${index + 1}`}
-                    row={ps}
-                    memberOptions={memberOptions}
-                    onChange={(patch) =>
-                      setCreateState((prev) => ({
-                        ...prev,
-                        playerStats: prev.playerStats.map((item, i) =>
-                          i === index
-                            ? withCalculatedPlayerPercents({
-                                ...item,
-                                ...patch,
-                                club: myClubId,
-                              })
-                            : item
-                        ),
-                      }))
-                    }
-                    onRemove={() =>
-                      setCreateState((prev) => ({
-                        ...prev,
-                        playerStats: prev.playerStats.filter((_, i) => i !== index),
-                      }))
-                    }
-                    removable={createState.playerStats.length > 1}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="submit"
-                disabled={!isAdminOrCaptain || createSaving || loadingBase}
-                className="rounded-xl bg-emerald-600 px-5 py-2.5 font-medium hover:bg-emerald-500 disabled:opacity-50"
-              >
-                {createSaving ? "Guardando..." : "Crear partido"}
-              </button>
-
-              <button
-                type="button"
-                onClick={resetCreateForm}
-                disabled={createSaving}
-                className="rounded-xl border border-white/10 px-5 py-2.5 hover:bg-white/10 disabled:opacity-50"
-              >
-                Limpiar
-              </button>
-            </div>
-          </form>
         </div>
       ) : null}
 
@@ -1850,11 +1544,7 @@ async function handleImportMatchImages() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-semibold">Partidos del club</h2>
-            <p className="mt-1 text-sm text-slate-400">
-              {isAdminOrCaptain
-                ? "Admin y captain pueden editar. Solo admin puede eliminar."
-                : "Vista de consulta de los partidos registrados del club."}
-            </p>
+            
           </div>
 
           <button

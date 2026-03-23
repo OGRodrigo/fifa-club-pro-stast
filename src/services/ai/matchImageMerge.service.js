@@ -84,6 +84,64 @@ function average(nums = []) {
   return Number((valid.reduce((acc, n) => acc + n, 0) / valid.length).toFixed(2));
 }
 
+function pickBestScoreResult(parsedResults = []) {
+  const candidates = parsedResults
+    .map((result) => {
+      const draft = result?.partialDraft || {};
+      const home = draft?.scoreHome;
+      const away = draft?.scoreAway;
+
+      if (home == null || away == null) {
+        return null;
+      }
+
+      const notes = Array.isArray(result?.notes) ? result.notes : [];
+      const methodNote = notes.find((note) => String(note).startsWith("Método score:"));
+      const confidenceNote = notes.find((note) =>
+        String(note).startsWith("Confianza score imagen:")
+      );
+
+      const method = methodNote
+        ? methodNote.replace("Método score:", "").trim()
+        : null;
+
+      const scoreImageConfidence = confidenceNote
+        ? Number(
+            confidenceNote.replace("Confianza score imagen:", "").trim()
+          ) || 0
+        : 0;
+
+      let priority = 0;
+
+      if (method === "vs_score_vs") priority = 3;
+      else if (method === "classic_pair") priority = 2;
+      else if (method === "loose_pair") priority = 1;
+
+      return {
+        home,
+        away,
+        method,
+        priority,
+        scoreImageConfidence,
+      };
+    })
+    .filter(Boolean);
+
+  if (!candidates.length) {
+    return null;
+  }
+
+  candidates.sort((a, b) => {
+    if (b.priority !== a.priority) return b.priority - a.priority;
+    if (b.scoreImageConfidence !== a.scoreImageConfidence) {
+      return b.scoreImageConfidence - a.scoreImageConfidence;
+    }
+    return 0;
+  });
+
+  return candidates[0];
+}
+
 function mergeMatchImageResults({ parsedResults = [], meta = {} }) {
   const output = createEmptyDraft(meta);
 
@@ -105,8 +163,9 @@ function mergeMatchImageResults({ parsedResults = [], meta = {} }) {
       draft.awayClub?.normalizedName ?? null
     );
 
-    fillIfEmpty(output.matchDraft, "scoreHome", draft.scoreHome);
-    fillIfEmpty(output.matchDraft, "scoreAway", draft.scoreAway);
+      // score no se fija aquí con fillIfEmpty;
+  // se decide al final con pickBestScoreResult(...)
+
     fillIfEmpty(output.matchDraft, "minute", draft.minute);
     fillIfEmpty(output.matchDraft, "status", draft.status);
     fillIfEmpty(output.matchDraft, "season", draft.season);
@@ -125,6 +184,19 @@ function mergeMatchImageResults({ parsedResults = [], meta = {} }) {
       output.conflicts.push(...result.conflicts);
     }
   });
+
+  const bestScore = pickBestScoreResult(parsedResults);
+
+  if (bestScore) {
+    output.matchDraft.scoreHome = bestScore.home;
+    output.matchDraft.scoreAway = bestScore.away;
+
+    output.notes.push(
+      `Score final elegido: ${bestScore.home} - ${bestScore.away}`,
+      `Método score final: ${bestScore.method ?? "null"}`,
+      `Confianza score final: ${bestScore.scoreImageConfidence ?? 0}`
+    );
+  }
 
   output.confidence = {
     overall: average(parsedResults.map((r) => r.confidence?.overall)),

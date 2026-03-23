@@ -14,6 +14,9 @@ import MemberDetail from "./pages/MemberDetail";
 import Clubs from "./pages/Clubs";
 import CreateClub from "./pages/CreateClub";
 import Matches from "./pages/Matches";
+import CreateMatchHub from "./pages/CreateMatchHub";
+import CreateMatchManual from "./pages/CreateMatchManual";
+import CreateMatchFromImages from "./pages/CreateMatchFromImages";
 import MatchDetail from "./pages/MatchDetail";
 import ClubAnalytics from "./pages/ClubAnalytics";
 import ImportMatchImages from "./pages/ImportMatchImages";
@@ -118,6 +121,42 @@ export default function App() {
         />
 
         <Route
+          path="/matches/create"
+          element={
+            <Private>
+              <CreateMatchHub />
+            </Private>
+          }
+        />
+
+        <Route
+          path="/matches/create/manual"
+          element={
+            <Private>
+              <CreateMatchManual />
+            </Private>
+          }
+        />
+
+        <Route
+          path="/matches/create/images"
+          element={
+            <Private>
+              <CreateMatchFromImages />
+            </Private>
+          }
+        />
+
+        <Route
+          path="/matches/import-images"
+          element={
+            <Private>
+              <ImportMatchImages />
+            </Private>
+          }
+        />
+
+        <Route
           path="/matches/:id"
           element={
             <Private>
@@ -127,18 +166,16 @@ export default function App() {
         />
 
         <Route
-  path="/club/analytics"
-  element={
-    <Private>
-      <ClubAnalytics />
-    </Private>
-  }
-/>
+          path="/club/analytics"
+          element={
+            <Private>
+              <ClubAnalytics />
+            </Private>
+          }
+        />
 
         <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>
     </BrowserRouter>
   );
-
-  <Route path="/matches/import-images" element={<ImportMatchImages />} />
 }
