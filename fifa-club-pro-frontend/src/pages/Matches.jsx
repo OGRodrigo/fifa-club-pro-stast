@@ -3,10 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { parseMatchImages } from "../services/aiMatchImport";
 
 /**
  * =====================================================
- * MATCHES V2
+ * MATCHES V3
  * -----------------------------------------------------
  * Regla funcional de esta versión:
  * - datos base del partido: completos
@@ -17,6 +18,11 @@ import { useAuth } from "../auth/AuthContext";
  * No se inventan:
  * - lineup rival
  * - stats individuales del rival
+ *
+ * Sprint 1:
+ * - fix bug de validación en create
+ * - agregar modo Manual / Imágenes
+ * - importar draft IA y rellenar createState
  * =====================================================
  */
 
@@ -228,6 +234,256 @@ function sideOfMyClub(homeClubId, awayClubId, myClubId) {
 }
 
 /* =====================================================
+ * Helpers IA / draft -> createState
+ * ===================================================== */
+function safeString(value, fallback = "") {
+  return typeof value === "string" ? value : fallback;
+}
+
+function normalizeDraftDate(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 16);
+}
+
+function findClubIdByName(clubs, draftClubName = "", fallbackId = "") {
+  const target = String(draftClubName || "").trim().toLowerCase();
+  if (!target) return fallbackId;
+
+  const match = clubs.find(
+    (club) => String(club?.name || "").trim().toLowerCase() === target
+  );
+
+  return match?._id || fallbackId;
+}
+
+function findMemberIdByName(members, draftName = "") {
+  const target = String(draftName || "").trim().toLowerCase();
+  if (!target) return "";
+
+  const match = members.find((member) => {
+    const gamerTag = String(member?.gamerTag || "").trim().toLowerCase();
+    const username = String(member?.username || "").trim().toLowerCase();
+    return gamerTag === target || username === target;
+  });
+
+  return match?.id || "";
+}
+
+function mapDraftTeamStats(teamStats) {
+  return withCalculatedTeamPercents({
+    ...createEmptyTeamStats(),
+    ...(teamStats || {}),
+  });
+}
+
+function mapDraftLineupPlayers(players = [], myMembers = []) {
+  if (!Array.isArray(players)) return [];
+
+  return players.map((player) => ({
+    user:
+      player?.user ||
+      findMemberIdByName(
+        myMembers,
+        player?.gamerTag ||
+          player?.username ||
+          player?.name ||
+          player?.playerName ||
+          ""
+      ),
+    position: safeString(
+      player?.position || player?.pos || ""
+    ).toUpperCase(),
+    shirtNumber:
+      player?.shirtNumber === null || player?.shirtNumber === undefined
+        ? ""
+        : player.shirtNumber,
+    starter: player?.starter ?? player?.isStarter ?? true,
+  }));
+}
+
+function mapDraftPlayerStats(playerStats = [], myClubId = "", myMembers = []) {
+  if (!Array.isArray(playerStats) || playerStats.length === 0) {
+    return [createEmptyPlayerStat(myClubId)];
+  }
+
+  return playerStats.map((ps) =>
+    withCalculatedPlayerPercents({
+      ...createEmptyPlayerStat(myClubId),
+      ...ps,
+      user:
+        ps?.user ||
+        findMemberIdByName(
+          myMembers,
+          ps?.gamerTag ||
+            ps?.username ||
+            ps?.name ||
+            ps?.playerName ||
+            ""
+        ),
+      club: myClubId,
+      position: safeString(ps?.position || ps?.pos || "").toUpperCase(),
+      rating: normalizeNumber(ps?.rating ?? ps?.matchRating ?? 0),
+      minutesPlayed: normalizeNumber(ps?.minutesPlayed ?? ps?.minutes ?? 90),
+      goals: normalizeNumber(ps?.goals),
+      assists: normalizeNumber(ps?.assists),
+      shots: normalizeNumber(ps?.shots),
+      shotsOnTarget: normalizeNumber(ps?.shotsOnTarget),
+      passes: normalizeNumber(ps?.passes),
+      passesCompleted: normalizeNumber(ps?.passesCompleted),
+      keyPasses: normalizeNumber(ps?.keyPasses),
+      dribbles: normalizeNumber(ps?.dribbles),
+      dribblesWon: normalizeNumber(ps?.dribblesWon),
+      tackles: normalizeNumber(ps?.tackles),
+      tacklesWon: normalizeNumber(ps?.tacklesWon),
+      interceptions: normalizeNumber(ps?.interceptions),
+      recoveries: normalizeNumber(ps?.recoveries),
+      clearances: normalizeNumber(ps?.clearances),
+      blocks: normalizeNumber(ps?.blocks),
+      saves: normalizeNumber(ps?.saves),
+      fouls: normalizeNumber(ps?.fouls),
+      yellowCards: normalizeNumber(ps?.yellowCards),
+      redCards: normalizeNumber(ps?.redCards),
+      isMVP: Boolean(ps?.isMVP || ps?.mvp),
+    })
+  );
+}
+
+function extractMatchDraftFromAiResponse(data) {
+  if (!data || typeof data !== "object") return null;
+
+  if (data.matchDraft && typeof data.matchDraft === "object") {
+    return {
+      matchDraft: data.matchDraft,
+      confidence: data.confidence || {},
+      missingFields: Array.isArray(data.missingFields) ? data.missingFields : [],
+      conflicts: Array.isArray(data.conflicts) ? data.conflicts : [],
+      notes: Array.isArray(data.notes) ? data.notes : [],
+      message: data.message || "",
+      success: Boolean(data.success),
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Intenta adaptar diferentes posibles shapes de respuesta del backend IA.
+ * No inventa datos, solo cae en fallbacks seguros.
+ */
+function isAiDraftEffectivelyEmpty(extracted) {
+  const draft = extracted?.matchDraft;
+  if (!draft) return true;
+
+  const hasHomeClub = Boolean(draft?.homeClub?.name);
+  const hasAwayClub = Boolean(draft?.awayClub?.name);
+  const hasScoreHome = draft?.scoreHome !== null && draft?.scoreHome !== undefined;
+  const hasScoreAway = draft?.scoreAway !== null && draft?.scoreAway !== undefined;
+  const hasStadium = Boolean(draft?.stadium);
+
+  const stats = draft?.stats || {};
+  const hasAnyStat = Object.values(stats).some(
+    (value) => value !== null && value !== undefined
+  );
+
+  return !(
+    hasHomeClub ||
+    hasAwayClub ||
+    hasScoreHome ||
+    hasScoreAway ||
+    hasStadium ||
+    hasAnyStat
+  );
+}
+
+function mapAiDraftToCreateState({ extracted, myClubId, clubs }) {
+  const fallback = createInitialCreateState(myClubId || "");
+  const draft = extracted?.matchDraft;
+
+  if (!draft || typeof draft !== "object") {
+    return fallback;
+  }
+
+  const homeClubName =
+    draft?.homeClub?.normalizedName || draft?.homeClub?.name || "";
+  const awayClubName =
+    draft?.awayClub?.normalizedName || draft?.awayClub?.name || "";
+
+  const homeClubId = findClubIdByName(clubs, homeClubName, myClubId);
+  const awayClubId = findClubIdByName(clubs, awayClubName, "");
+
+  return {
+    homeClub: homeClubId || myClubId || "",
+    awayClub: awayClubId || "",
+    date: "",
+    stadium: "",
+    competition: "League",
+    status:
+      draft?.status === "final"
+        ? "played"
+        : safeString(draft?.status, "played"),
+    scoreHome: normalizeNumber(draft?.scoreHome, 0),
+    scoreAway: normalizeNumber(draft?.scoreAway, 0),
+
+    teamStats: {
+      home: withCalculatedTeamPercents({
+        ...createEmptyTeamStats(),
+        possession: normalizeNumber(draft?.stats?.possessionHome, 0),
+        shots: normalizeNumber(draft?.stats?.shotsHome, 0),
+        shotsOnTarget: normalizeNumber(draft?.stats?.shotsOnTargetHome, 0),
+        shotAccuracy: normalizeNumber(draft?.stats?.shotAccuracyHome, 0),
+        expectedGoals: normalizeNumber(draft?.stats?.xgHome, 0),
+        passes: normalizeNumber(draft?.stats?.passesHome, 0),
+        passAccuracy: normalizeNumber(draft?.stats?.passAccuracyHome, 0),
+        tackles: normalizeNumber(draft?.stats?.tacklesHome, 0),
+        recoveries: normalizeNumber(draft?.stats?.recoveriesHome, 0),
+        saves: normalizeNumber(draft?.stats?.savesHome, 0),
+        fouls: normalizeNumber(draft?.stats?.foulsHome, 0),
+        offsides: normalizeNumber(draft?.stats?.offsidesHome, 0),
+        corners: normalizeNumber(draft?.stats?.cornersHome, 0),
+        yellowCards: normalizeNumber(draft?.stats?.yellowCardsHome, 0),
+        redCards: normalizeNumber(draft?.stats?.redCardsHome, 0),
+        dribbleSuccess: normalizeNumber(draft?.stats?.dribbleSuccessHome, 0),
+      }),
+
+      away: withCalculatedTeamPercents({
+        ...createEmptyTeamStats(),
+        possession: normalizeNumber(draft?.stats?.possessionAway, 0),
+        shots: normalizeNumber(draft?.stats?.shotsAway, 0),
+        shotsOnTarget: normalizeNumber(draft?.stats?.shotsOnTargetAway, 0),
+        shotAccuracy: normalizeNumber(draft?.stats?.shotAccuracyAway, 0),
+        expectedGoals: normalizeNumber(draft?.stats?.xgAway, 0),
+        passes: normalizeNumber(draft?.stats?.passesAway, 0),
+        passAccuracy: normalizeNumber(draft?.stats?.passAccuracyAway, 0),
+        tackles: normalizeNumber(draft?.stats?.tacklesAway, 0),
+        recoveries: normalizeNumber(draft?.stats?.recoveriesAway, 0),
+        saves: normalizeNumber(draft?.stats?.savesAway, 0),
+        fouls: normalizeNumber(draft?.stats?.foulsAway, 0),
+        offsides: normalizeNumber(draft?.stats?.offsidesAway, 0),
+        corners: normalizeNumber(draft?.stats?.cornersAway, 0),
+        yellowCards: normalizeNumber(draft?.stats?.yellowCardsAway, 0),
+        redCards: normalizeNumber(draft?.stats?.redCardsAway, 0),
+        dribbleSuccess: normalizeNumber(draft?.stats?.dribbleSuccessAway, 0),
+      }),
+    },
+
+    lineups: {
+      home: {
+        formation: "",
+        players: [],
+      },
+      away: {
+        formation: "",
+        players: [],
+      },
+    },
+
+    playerStats: [createEmptyPlayerStat(myClubId)],
+  };
+}
+
+/* =====================================================
  * Componente principal
  * ===================================================== */
 export default function Matches() {
@@ -256,6 +512,14 @@ export default function Matches() {
   const [createErr, setCreateErr] = useState("");
   const [createOk, setCreateOk] = useState("");
 
+  // Sprint 1: modo manual / imágenes
+  const [createMode, setCreateMode] = useState("manual");
+  const [importImages, setImportImages] = useState([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importErr, setImportErr] = useState("");
+  const [importOk, setImportOk] = useState("");
+  const [lastImportedDraft, setLastImportedDraft] = useState(null);
+
   const [editBase, setEditBase] = useState(initialEditBaseState);
   const [editBaseErr, setEditBaseErr] = useState("");
   const [editBaseOk, setEditBaseOk] = useState("");
@@ -268,7 +532,9 @@ export default function Matches() {
   const [editLineupsErr, setEditLineupsErr] = useState("");
   const [editLineupsOk, setEditLineupsOk] = useState("");
 
-  const [editPlayerStats, setEditPlayerStats] = useState(initialEditPlayerStatsState);
+  const [editPlayerStats, setEditPlayerStats] = useState(
+    initialEditPlayerStatsState
+  );
   const [editPlayerStatsErr, setEditPlayerStatsErr] = useState("");
   const [editPlayerStatsOk, setEditPlayerStatsOk] = useState("");
 
@@ -328,12 +594,12 @@ export default function Matches() {
         if (!active) return;
 
         setClubs(
-  Array.isArray(clubsRes.data)
-    ? clubsRes.data
-    : Array.isArray(clubsRes.data?.clubs)
-    ? clubsRes.data.clubs
-    : []
-);
+          Array.isArray(clubsRes.data)
+            ? clubsRes.data
+            : Array.isArray(clubsRes.data?.clubs)
+            ? clubsRes.data.clubs
+            : []
+        );
 
         if (membersRes) {
           const members = Array.isArray(membersRes.data?.members)
@@ -399,12 +665,12 @@ export default function Matches() {
       });
 
       setMatches(
-  Array.isArray(res.data?.data)
-    ? res.data.data
-    : Array.isArray(res.data?.matches)
-    ? res.data.matches
-    : []
-);
+        Array.isArray(res.data?.data)
+          ? res.data.data
+          : Array.isArray(res.data?.matches)
+          ? res.data.matches
+          : []
+      );
     } catch (error) {
       setMatchesErr(
         error?.response?.data?.message ||
@@ -456,45 +722,133 @@ export default function Matches() {
    * Helpers de create
    * ===================================================== */
   function resetCreateForm() {
-  setCreateState(createInitialCreateState(myClubId || ""));
-  setCreateErr("");
-}
+    setCreateState(createInitialCreateState(myClubId || ""));
+    setCreateErr("");
+    setCreateOk("");
+    setImportImages([]);
+    setImportErr("");
+    setImportOk("");
+    setLastImportedDraft(null);
+    setCreateMode("manual");
+  }
 
   function validateCreateForm() {
     if (!myClubId) return "No tienes club activo.";
     if (!isAdminOrCaptain) return "Solo admin o captain pueden crear partidos.";
+
     if (!createState.homeClub || !createState.awayClub) {
       return "Debes seleccionar homeClub y awayClub.";
     }
+
     if (createState.homeClub === createState.awayClub) {
       return "homeClub y awayClub no pueden ser el mismo.";
     }
-    if (
-      createState.homeClub !== myClubId &&
-      createState.awayClub !== myClubId
-    ) {
+
+    if (createState.homeClub !== myClubId && createState.awayClub !== myClubId) {
       return "Tu club debe participar en el partido.";
     }
+
     if (!createState.date) return "Debes indicar fecha.";
     if (!createState.stadium.trim()) return "Debes indicar estadio.";
 
     return "";
   }
 
-  async function handleCreateMatch(e) {
-    e.preventDefault();
+async function handleImportMatchImages() {
+  if (!myClubId) {
+    setImportErr("No tienes club activo.");
+    setImportOk("");
+    return;
+  }
 
-    const validationError = validateCreateForm();
-    if (validationError) {
-      setCreateOk("Partido creado correctamente.");
-resetCreateForm();
-await loadMatches();
+  if (!isAdminOrCaptain) {
+    setImportErr("Solo admin o captain pueden importar partidos.");
+    setImportOk("");
+    return;
+  }
+
+  if (!importImages.length) {
+    setImportErr("Debes seleccionar al menos una imagen.");
+    setImportOk("");
+    return;
+  }
+
+  try {
+    setImportLoading(true);
+    setImportErr("");
+    setImportOk("");
+    setCreateErr("");
+    setCreateOk("");
+
+    const data = await parseMatchImages({
+      images: importImages,
+      clubId: myClubId,
+      source: "ea_fc_match_screens",
+    });
+
+    if (data?.success === false) {
+      setImportErr(data?.message || "La IA no pudo procesar las imágenes.");
+      setImportOk("");
       return;
     }
 
-    // ✅ CORRECTO:
-    // la validación del create debe usar createState.playerStats
-    // y no editPlayerStats.playerStats
+    const extracted = extractMatchDraftFromAiResponse(data);
+
+    if (!extracted) {
+      setImportErr(
+        data?.message ||
+          "La IA respondió, pero no devolvió un borrador utilizable."
+      );
+      setImportOk("");
+      return;
+    }
+
+    const draftIsEmpty = isAiDraftEffectivelyEmpty(extracted);
+
+    const nextState = mapAiDraftToCreateState({
+      extracted,
+      myClubId,
+      clubs,
+    });
+
+    setCreateState(nextState);
+    setLastImportedDraft(extracted);
+    setCreateMode("manual");
+
+    if (draftIsEmpty) {
+      setImportOk(
+        "Imágenes procesadas correctamente. La integración IA base está activa, pero esta versión aún no extrae datos reales automáticamente."
+      );
+    } else {
+      setImportOk(
+        data?.message ||
+          "Borrador importado correctamente. Revisa y guarda el partido."
+      );
+    }
+  } catch (error) {
+    setImportErr(
+      error?.response?.data?.message ||
+        error.message ||
+        "No se pudieron procesar las imágenes."
+    );
+    setImportOk("");
+  } finally {
+    setImportLoading(false);
+  }
+}
+
+  async function handleCreateMatch(e) {
+    e.preventDefault();
+
+    // FIX REAL:
+    // Antes estaba al revés y daba éxito cuando había error.
+    const validationError = validateCreateForm();
+    if (validationError) {
+      setCreateErr(validationError);
+      setCreateOk("");
+      return;
+    }
+
     const playerStatsError = validatePlayerStatsRows(createState.playerStats);
     if (playerStatsError) {
       setCreateErr(playerStatsError);
@@ -960,11 +1314,11 @@ await loadMatches();
     e.preventDefault();
 
     const validationError = validatePlayerStatsRows(editPlayerStats.playerStats);
-if (validationError) {
-  setEditPlayerStatsErr(validationError);
-  setEditPlayerStatsOk("");
-  return;
-}
+    if (validationError) {
+      setEditPlayerStatsErr(validationError);
+      setEditPlayerStatsOk("");
+      return;
+    }
 
     try {
       setEditPlayerStats((prev) => ({ ...prev, saving: true }));
@@ -1039,18 +1393,23 @@ if (validationError) {
 
   return (
     <section className="space-y-6">
-
-            {/* Header */}
+      {/* Header */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <h1 className="text-2xl font-bold text-white">
-  {isAdminOrCaptain ? "Gestión de partidos" : "Historial de partidos"}
-</h1>
+          {isAdminOrCaptain ? "Gestión de partidos" : "Historial de partidos"}
+        </h1>
 
         <p className="mt-2 text-sm text-slate-300">
-  {isAdminOrCaptain
-    ? "Aquí puedes crear, editar y revisar los partidos del club."
-    : "Aquí puedes consultar el historial de partidos registrados de tu club."}
-</p>
+          {isAdminOrCaptain
+            ? "Aquí puedes crear, editar y revisar los partidos del club."
+            : "Aquí puedes consultar el historial de partidos registrados de tu club."}
+        </p>
+
+        {loadingBase ? (
+          <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-300">
+            Cargando datos base del club...
+          </div>
+        ) : null}
 
         {baseErr ? (
           <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
@@ -1059,10 +1418,45 @@ if (validationError) {
         ) : null}
       </div>
 
-            {/* Crear partido */}
+      {/* Crear partido */}
       {isAdminOrCaptain ? (
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
           <h2 className="text-xl font-semibold">Crear partido</h2>
+
+          {/* Selector de modo */}
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setCreateMode("manual");
+                setImportErr("");
+                setImportOk("");
+              }}
+              className={`rounded-xl border px-4 py-2 text-sm ${
+                createMode === "manual"
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                  : "border-white/10 hover:bg-white/10"
+              }`}
+            >
+              Manual
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCreateMode("images");
+                setCreateErr("");
+                setCreateOk("");
+              }}
+              className={`rounded-xl border px-4 py-2 text-sm ${
+                createMode === "images"
+                  ? "border-sky-500/40 bg-sky-500/10 text-sky-200"
+                  : "border-white/10 hover:bg-white/10"
+              }`}
+            >
+              Importar por imágenes
+            </button>
+          </div>
 
           {createErr ? (
             <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
@@ -1073,6 +1467,86 @@ if (validationError) {
           {createOk ? (
             <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
               {createOk}
+            </div>
+          ) : null}
+
+          {/* Panel IA */}
+          {createMode === "images" ? (
+            <div className="mt-4 rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4">
+              <h3 className="font-semibold text-sky-100">
+                Importación por imágenes
+              </h3>
+
+              <p className="mt-1 text-sm text-slate-300">
+                Sube capturas del partido. La IA intentará generar un borrador y
+                rellenar el formulario.
+              </p>
+
+              {importErr ? (
+                <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                  {importErr}
+                </div>
+              ) : null}
+
+              {importOk ? (
+                <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                  {importOk}
+                </div>
+              ) : null}
+
+              <div className="mt-4 space-y-4">
+                <label className="block space-y-2">
+                  <span className="text-sm text-slate-300">Imágenes</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      setImportImages(files);
+                    }}
+                    className="block w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm"
+                  />
+                </label>
+
+                {importImages.length > 0 ? (
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-300">
+                    {importImages.length} imagen(es) seleccionada(s)
+                  </div>
+                ) : null}
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={handleImportMatchImages}
+                    disabled={importLoading || importImages.length === 0}
+                    className="rounded-xl bg-sky-600 px-5 py-2.5 font-medium hover:bg-sky-500 disabled:opacity-50"
+                  >
+                    {importLoading ? "Procesando..." : "Procesar imágenes"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImportImages([]);
+                      setImportErr("");
+                      setImportOk("");
+                      setLastImportedDraft(null);
+                    }}
+                    disabled={importLoading}
+                    className="rounded-xl border border-white/10 px-5 py-2.5 hover:bg-white/10 disabled:opacity-50"
+                  >
+                    Limpiar importación
+                  </button>
+                </div>
+
+                {lastImportedDraft ? (
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm text-emerald-100">
+                    Se cargó un borrador IA en el formulario manual. Revísalo
+                    antes de guardar.
+                  </div>
+                ) : null}
+              </div>
             </div>
           ) : null}
 
@@ -1170,7 +1644,8 @@ if (validationError) {
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <h3 className="font-semibold">2. Team stats</h3>
               <p className="mt-1 text-sm text-slate-400">
-                Aquí sí puedes cargar stats de ambos clubes si la captura las muestra.
+                Aquí sí puedes cargar stats de ambos clubes si la captura las
+                muestra.
               </p>
 
               <div className="mt-4 grid gap-6 lg:grid-cols-2">
@@ -1217,11 +1692,14 @@ if (validationError) {
               <div className="mt-4">
                 {!myCreateSide ? (
                   <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-400">
-                    Selecciona primero si tu club será home o away para cargar la alineación.
+                    Selecciona primero si tu club será home o away para cargar
+                    la alineación.
                   </div>
                 ) : (
                   <LineupEditor
-                    title={`Lineup de mi club (${myCreateSide === "home" ? "home" : "away"})`}
+                    title={`Lineup de mi club (${
+                      myCreateSide === "home" ? "home" : "away"
+                    })`}
                     lineup={createState.lineups[myCreateSide]}
                     memberOptions={memberOptions}
                     onFormationChange={(value) =>
@@ -1272,8 +1750,8 @@ if (validationError) {
                           ...prev.lineups,
                           [myCreateSide]: {
                             ...prev.lineups[myCreateSide],
-                            players: prev.lineups[myCreateSide].players.map((p, i) =>
-                              i === index ? { ...p, ...patch } : p
+                            players: prev.lineups[myCreateSide].players.map(
+                              (p, i) => (i === index ? { ...p, ...patch } : p)
                             ),
                           },
                         },
@@ -1299,7 +1777,10 @@ if (validationError) {
                   onClick={() =>
                     setCreateState((prev) => ({
                       ...prev,
-                      playerStats: [...prev.playerStats, createEmptyPlayerStat(myClubId)],
+                      playerStats: [
+                        ...prev.playerStats,
+                        createEmptyPlayerStat(myClubId),
+                      ],
                     }))
                   }
                   className="rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/10"
@@ -1368,7 +1849,7 @@ if (validationError) {
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-                        <h2 className="text-xl font-semibold">Partidos del club</h2>
+            <h2 className="text-xl font-semibold">Partidos del club</h2>
             <p className="mt-1 text-sm text-slate-400">
               {isAdminOrCaptain
                 ? "Admin y captain pueden editar. Solo admin puede eliminar."
@@ -1441,7 +1922,7 @@ if (validationError) {
                       </td>
                       <td className="px-3 py-3">{match.status || "played"}</td>
 
-                                            <td className="px-3 py-3">
+                      <td className="px-3 py-3">
                         <div className="flex flex-wrap gap-2">
                           {isAdminOrCaptain ? (
                             <>
@@ -1509,7 +1990,7 @@ if (validationError) {
 
       {/* Panel edit base */}
       {isAdminOrCaptain && editBase.open ? (
-  <Panel title="Editar datos base" onClose={closeEditBase}>
+        <Panel title="Editar datos base" onClose={closeEditBase}>
           {editBaseErr ? <ErrorBox text={editBaseErr} /> : null}
           {editBaseOk ? <SuccessBox text={editBaseOk} /> : null}
 
@@ -2076,7 +2557,13 @@ function FieldSelect({ label, value, onChange, options, disabled = false }) {
   );
 }
 
-function FieldSelectSimple({ label, value, onChange, options, disabled = false }) {
+function FieldSelectSimple({
+  label,
+  value,
+  onChange,
+  options,
+  disabled = false,
+}) {
   return (
     <label className="space-y-2">
       <span className="text-sm text-slate-300">{label}</span>
@@ -2213,9 +2700,7 @@ function LineupEditor({
               label="Dorsal"
               type="number"
               value={player.shirtNumber}
-              onChange={(value) =>
-                onPlayerChange(index, { shirtNumber: value })
-              }
+              onChange={(value) => onPlayerChange(index, { shirtNumber: value })}
             />
 
             <label className="flex items-end gap-3 pb-2">

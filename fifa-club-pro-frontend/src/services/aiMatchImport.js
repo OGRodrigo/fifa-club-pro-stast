@@ -2,7 +2,14 @@
 import { api } from "../api/client";
 
 /**
- * Envía varias imágenes al backend IA y devuelve el borrador de partido.
+ * Envía varias imágenes al backend IA y devuelve la respuesta completa.
+ *
+ * No se transforma aquí.
+ * La transformación del draft se hace en la página Matches,
+ * porque allí ya tenemos acceso a:
+ * - myClubId
+ * - clubes cargados
+ * - members cargados
  *
  * @param {Object} params
  * @param {File[]} params.images
