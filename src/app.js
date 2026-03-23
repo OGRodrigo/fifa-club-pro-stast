@@ -17,23 +17,21 @@ const advancedStatsRoutes = require("./routes/advancedStats.routes");
 const clubsRoutes = require("./routes/clubs.routes");
 const membersRoutes = require("./routes/members.routes");
 const playersRoutes = require("./routes/players.routes");
+const aiRoutes = require("./routes/ai.routes");
 
 const app = express();
 
 // ==============================
 // 2) Configuración CORS
 // ==============================
-// Permite definir múltiples orígenes separados por coma:
-// CLIENT_URL=https://tu-front.vercel.app,https://tu-dominio.com
+// Permite múltiples orígenes separados por coma:
+// CLIENT_URL=https://tu-front.vercel.app,http://localhost:5173
 const envOrigins = (process.env.CLIENT_URL || "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-const allowedOrigins = [
-  ...envOrigins,
-  "http://localhost:5173",
-].filter(Boolean);
+const allowedOrigins = [...envOrigins, "http://localhost:5173"].filter(Boolean);
 
 // ==============================
 // 3) Middleware base
@@ -43,7 +41,7 @@ app.use(express.json());
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Permitir requests sin origin (Postman, health checks, server-to-server)
+      // Permitir requests sin origin (health checks, postman, server-to-server)
       if (!origin) {
         return callback(null, true);
       }
@@ -98,6 +96,9 @@ app.use("/league", leagueRoutes);
 app.use("/matches", matchesRoutes);
 app.use("/stats", statsRoutes);
 app.use("/advanced-stats", advancedStatsRoutes);
+
+// Nueva feature IA (aislada)
+app.use("/ai", aiRoutes);
 
 // ⚠️ /clubs (orden importante)
 app.use("/clubs/:clubId/players", playersRoutes);
