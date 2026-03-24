@@ -105,18 +105,20 @@ const aggregateByPlayer = (matches, clubId, onlyUserId = null) => {
 
     statsRows.forEach(ps => {
       const uid = ps.user?._id ? ps.user._id.toString() : ps.user.toString();
-      const uname = ps.user?.username || "unknown";
+const uname = ps.user?.username || "unknown";
+const gamerTag = ps.user?.gamerTag || "";
 
       if (!map.has(uid)) {
         map.set(uid, {
-          userId: uid,
-          username: uname,
-          played: 0,
-          goals: 0,
-          assists: 0,
-          contrib: 0,
-          points: 0
-        });
+  userId: uid,
+  username: uname,
+  gamerTag,
+  played: 0,
+  goals: 0,
+  assists: 0,
+  contrib: 0,
+  points: 0
+});
       }
 
       const row = map.get(uid);
@@ -283,7 +285,7 @@ exports.getClubPlayersStats = async (req, res) => {
       toDate: range.toDate
     });
 
-    const matches = await Match.find(matchFilter).populate("playerStats.user", "username");
+    const matches = await Match.find(matchFilter).populate("playerStats.user", "username gamerTag");
 
     const map = aggregateByPlayer(matches, clubId);
     const players = Array.from(map.values()).sort((a, b) => {
@@ -333,7 +335,7 @@ exports.getTopScorers = async (req, res) => {
     const year = yearParsed;
 
     const matchFilter = buildMatchFilter({ clubId, year });
-    const matches = await Match.find(matchFilter).populate("playerStats.user", "username");
+    const matches = await Match.find(matchFilter).populate("playerStats.user", "username gamerTag");
 
     const map = aggregateByPlayer(matches, clubId);
     const topScorers = Array.from(map.values())
@@ -383,7 +385,7 @@ exports.getTopAssists = async (req, res) => {
     const year = yearParsed;
 
     const matchFilter = buildMatchFilter({ clubId, year });
-    const matches = await Match.find(matchFilter).populate("playerStats.user", "username");
+    const matches = await Match.find(matchFilter).populate("playerStats.user", "username gamerTag");
 
     const map = aggregateByPlayer(matches, clubId);
     const topAssists = Array.from(map.values())
@@ -432,7 +434,7 @@ exports.getSeasonMVP = async (req, res) => {
     const matches = await Match.find({
       season: year,
       "playerStats.club": clubId
-    }).populate("playerStats.user", "username");
+    }).populate("playerStats.user", "username gamerTag");
 
     if (matches.length === 0) {
       return res.status(200).json({
@@ -501,7 +503,7 @@ exports.getLeaderboards = async (req, res) => {
       toDate: range.toDate
     });
 
-    const matches = await Match.find(matchFilter).populate("playerStats.user", "username");
+    const matches = await Match.find(matchFilter).populate("playerStats.user", "username gamerTag");
     const map = aggregateByPlayer(matches, clubId);
     const players = Array.from(map.values());
 
