@@ -1,9 +1,46 @@
-// src/pages/home/HomeAdmin.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { api } from "../../api/client";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../../ui/ToastContext";
+
+function cardClass() {
+  return "rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow";
+}
+
+function getRecentResultMeta(match, clubId) {
+  const homeId = String(match?.homeClub?._id || match?.homeClub || "");
+  const awayId = String(match?.awayClub?._id || match?.awayClub || "");
+
+  const isHome = homeId === String(clubId);
+
+  const myGoals = isHome
+    ? Number(match?.scoreHome ?? 0)
+    : Number(match?.scoreAway ?? 0);
+
+  const rivalGoals = isHome
+    ? Number(match?.scoreAway ?? 0)
+    : Number(match?.scoreHome ?? 0);
+
+  if (myGoals > rivalGoals) {
+    return {
+      label: "VICTORIA",
+      accent: "var(--fifa-neon)",
+    };
+  }
+
+  if (myGoals < rivalGoals) {
+    return {
+      label: "DERROTA",
+      accent: "var(--fifa-danger)",
+    };
+  }
+
+  return {
+    label: "EMPATE",
+    accent: "var(--fifa-cyan)",
+  };
+}
 
 export default function HomeAdmin() {
   const { clubContext, clearClubContext } = useAuth();
@@ -12,7 +49,6 @@ export default function HomeAdmin() {
 
   const clubId = clubContext?.clubId || "";
   const role = clubContext?.role || "";
-
   const isAdmin = role === "admin";
 
   const [loading, setLoading] = useState(false);
@@ -140,8 +176,16 @@ export default function HomeAdmin() {
   const lb = leaderboards?.leaderboards || null;
   const topScorers = Array.isArray(lb?.topScorers) ? lb.topScorers : [];
   const topAssists = Array.isArray(lb?.topAssists) ? lb.topAssists : [];
+  const topContrib = Array.isArray(lb?.topContrib) ? lb.topContrib : [];
   const mvpSeason = lb?.mvpSeason || null;
   const notes = lb?.notes || {};
+
+  const topScorer = topScorers[0] || null;
+  const topAssist = topAssists[0] || null;
+
+  const topScorersTop3 = useMemo(() => topScorers.slice(0, 3), [topScorers]);
+  const topAssistsTop3 = useMemo(() => topAssists.slice(0, 3), [topAssists]);
+  const topContribTop3 = useMemo(() => topContrib.slice(0, 3), [topContrib]);
 
   async function handleDeleteClub() {
     if (deletingClub) return;
@@ -185,7 +229,7 @@ export default function HomeAdmin() {
   if (!clubId) {
     return (
       <div className="space-y-5">
-        <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
+        <div className={cardClass()}>
           <div className="text-2xl font-extrabold tracking-tight">INICIO</div>
           <div className="mt-3 text-sm text-[var(--fifa-mute)]">
             No tienes un club activo seleccionado.
@@ -197,22 +241,33 @@ export default function HomeAdmin() {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
+      {/* HERO */}
+      <div className={cardClass()}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="text-2xl font-extrabold tracking-tight">INICIO</div>
+            <div className="text-xs font-semibold tracking-[0.25em] text-[var(--fifa-cyan)]">
+              CLUB DASHBOARD
+            </div>
 
-            <div className="mt-1 text-sm text-[var(--fifa-mute)]">
+            <div className="mt-2 text-3xl font-extrabold tracking-tight text-[var(--fifa-text)]">
+              INICIO
+            </div>
+
+            <div className="mt-2 text-sm text-[var(--fifa-mute)]">
               Estado:{" "}
               <span className="font-semibold text-[var(--fifa-neon)]">
                 {role === "admin" ? "Administrador" : "Capitán"}
               </span>
             </div>
 
-            <div className="mt-3 text-sm text-[var(--fifa-mute)]">
-              Club: <span className="text-[var(--fifa-text)]">{clubId}</span>
-              {" "}· Temporada:{" "}
-              <span className="text-[var(--fifa-text)]">{season || "—"}</span>
+            <div className="mt-3 flex flex-wrap gap-2 text-sm">
+              <Badge>
+                Club ID: <span className="text-[var(--fifa-text)]">{clubId}</span>
+              </Badge>
+              <Badge>
+                Temporada:{" "}
+                <span className="text-[var(--fifa-text)]">{season || "—"}</span>
+              </Badge>
             </div>
           </div>
 
@@ -264,7 +319,8 @@ export default function HomeAdmin() {
         ) : null}
       </div>
 
-      <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
+      {/* QUICK ACTIONS */}
+      <div className={cardClass()}>
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
           ACCESOS RÁPIDOS
         </div>
@@ -312,6 +368,7 @@ export default function HomeAdmin() {
         </div>
       </div>
 
+      {/* KPIS */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="PJ" value={String(pj)} />
         <StatCard label="PG" value={String(pg)} />
@@ -340,52 +397,53 @@ export default function HomeAdmin() {
         />
       </div>
 
+      {/* FEATURE LEADERBOARDS */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <BoardCard title="TOP GOLEADOR" subtitle={notes?.topScorers}>
-          {topScorers.length === 0 ? (
-            <EmptyRow text="Aún no hay goles registrados." />
-          ) : (
+          {topScorer ? (
             <FeaturePlayer
-              title={topScorers[0]?.gamerTag || topScorers[0]?.username || "—"}
-              subtitle={`@${topScorers[0]?.username || "—"}`}
+              title={topScorer?.gamerTag || topScorer?.username || "—"}
+              subtitle={`@${topScorer?.username || "—"}`}
               stats={[
                 {
                   label: "Goles",
-                  value: topScorers[0]?.goals ?? 0,
+                  value: topScorer?.goals ?? 0,
                   accent: "var(--fifa-neon)",
                 },
                 {
                   label: "PJ",
-                  value: topScorers[0]?.played ?? 0,
+                  value: topScorer?.played ?? 0,
                   accent: "var(--fifa-mute)",
                 },
               ]}
               emoji="⚽"
             />
+          ) : (
+            <EmptyRow text="Aún no hay goles registrados." />
           )}
         </BoardCard>
 
         <BoardCard title="TOP ASISTENCIAS" subtitle={notes?.topAssists}>
-          {topAssists.length === 0 ? (
-            <EmptyRow text="Aún no hay asistencias registradas." />
-          ) : (
+          {topAssist ? (
             <FeaturePlayer
-              title={topAssists[0]?.gamerTag || topAssists[0]?.username || "—"}
-              subtitle={`@${topAssists[0]?.username || "—"}`}
+              title={topAssist?.gamerTag || topAssist?.username || "—"}
+              subtitle={`@${topAssist?.username || "—"}`}
               stats={[
                 {
                   label: "Asist.",
-                  value: topAssists[0]?.assists ?? 0,
+                  value: topAssist?.assists ?? 0,
                   accent: "var(--fifa-cyan)",
                 },
                 {
                   label: "PJ",
-                  value: topAssists[0]?.played ?? 0,
+                  value: topAssist?.played ?? 0,
                   accent: "var(--fifa-mute)",
                 },
               ]}
               emoji="🎯"
             />
+          ) : (
+            <EmptyRow text="Aún no hay asistencias registradas." />
           )}
         </BoardCard>
 
@@ -417,7 +475,6 @@ export default function HomeAdmin() {
                 },
               ]}
               emoji="🏆"
-              grid4
             />
           ) : (
             <EmptyRow text="Aún no hay MVP para esta temporada." />
@@ -425,7 +482,38 @@ export default function HomeAdmin() {
         </BoardCard>
       </div>
 
-      <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
+      {/* TOP 3 TABLES */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <RankingCard
+          title="GOLEADORES"
+          accent="var(--fifa-neon)"
+          rows={topScorersTop3}
+          metricKey="goals"
+          metricLabel="Goles"
+          emptyText="Sin goleadores registrados."
+        />
+
+        <RankingCard
+          title="ASISTENCIAS"
+          accent="var(--fifa-cyan)"
+          rows={topAssistsTop3}
+          metricKey="assists"
+          metricLabel="Asist."
+          emptyText="Sin asistencias registradas."
+        />
+
+        <RankingCard
+          title="CONTRIBUCIÓN"
+          accent="gold"
+          rows={topContribTop3}
+          metricKey="contrib"
+          metricLabel="Contrib."
+          emptyText="Sin contribuciones registradas."
+        />
+      </div>
+
+      {/* RECENT MATCHES */}
+      <div className={cardClass()}>
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
           ÚLTIMOS PARTIDOS DEL CLUB
         </div>
@@ -439,34 +527,14 @@ export default function HomeAdmin() {
             {recentMatches.map((match) => {
               const homeName = match?.homeClub?.name || "Home";
               const awayName = match?.awayClub?.name || "Away";
-              const isHome =
-                String(match?.homeClub?._id || match?.homeClub) === String(clubId);
-
-              const myGoals = isHome
-                ? Number(match?.scoreHome ?? 0)
-                : Number(match?.scoreAway ?? 0);
-
-              const rivalGoals = isHome
-                ? Number(match?.scoreAway ?? 0)
-                : Number(match?.scoreHome ?? 0);
-
-              let resultLabel = "EMPATE";
-              let resultAccent = "var(--fifa-cyan)";
-
-              if (myGoals > rivalGoals) {
-                resultLabel = "VICTORIA";
-                resultAccent = "var(--fifa-neon)";
-              } else if (myGoals < rivalGoals) {
-                resultLabel = "DERROTA";
-                resultAccent = "var(--fifa-danger)";
-              }
+              const meta = getRecentResultMeta(match, clubId);
 
               return (
                 <button
                   key={match._id}
                   type="button"
                   onClick={() => navigate(`/matches/${match._id}`)}
-                  className="rounded-xl bg-black/25 p-4 text-left ring-1 ring-[var(--fifa-line)] transition hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon"
+                  className="rounded-2xl bg-black/25 p-4 text-left ring-1 ring-[var(--fifa-line)] transition hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-xs text-[var(--fifa-mute)]">
@@ -474,9 +542,9 @@ export default function HomeAdmin() {
                     </div>
                     <div
                       className="text-[10px] font-extrabold tracking-widest"
-                      style={{ color: resultAccent }}
+                      style={{ color: meta.accent }}
                     >
-                      {resultLabel}
+                      {meta.label}
                     </div>
                   </div>
 
@@ -502,7 +570,8 @@ export default function HomeAdmin() {
         )}
       </div>
 
-      <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
+      {/* GESTIÓN */}
+      <div className={cardClass()}>
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
           GESTIÓN DEL CLUB
         </div>
@@ -534,6 +603,14 @@ export default function HomeAdmin() {
   );
 }
 
+function Badge({ children }) {
+  return (
+    <span className="rounded-full bg-white/5 px-3 py-1 text-[11px] font-semibold text-[var(--fifa-mute)] ring-1 ring-[var(--fifa-line)]">
+      {children}
+    </span>
+  );
+}
+
 function StatCard({ label, value }) {
   return (
     <div className="rounded-xl bg-black/25 p-4 ring-1 ring-[var(--fifa-line)]">
@@ -558,7 +635,7 @@ function MiniKpiCard({ label, value, accent }) {
 
 function BoardCard({ title, subtitle, children }) {
   return (
-    <div className="rounded-2xl bg-fifa-card p-5 ring-1 ring-[var(--fifa-line)] shadow-glow">
+    <div className={cardClass()}>
       <div className="text-xs font-semibold tracking-widest text-[var(--fifa-mute)]">
         {title}
       </div>
@@ -658,6 +735,69 @@ function ManageCard({ title, text, buttonText, onClick }) {
       >
         {buttonText}
       </button>
+    </div>
+  );
+}
+
+function RankingCard({
+  title,
+  accent,
+  rows,
+  metricKey,
+  metricLabel,
+  emptyText,
+}) {
+  return (
+    <div className={cardClass()}>
+      <div
+        className="text-xs font-semibold tracking-widest"
+        style={{ color: accent }}
+      >
+        {title}
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="mt-3 text-sm text-[var(--fifa-mute)]">{emptyText}</div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {rows.map((row, idx) => (
+            <div
+              key={`${row?.userId || row?.username || "row"}-${idx}`}
+              className="flex items-center justify-between rounded-xl bg-black/25 p-3 ring-1 ring-[var(--fifa-line)]"
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-black/30 text-sm font-extrabold ring-1 ring-[var(--fifa-line)]"
+                  style={{ color: accent }}
+                >
+                  {idx + 1}
+                </div>
+
+                <div>
+                  <div className="text-sm font-extrabold text-[var(--fifa-text)]">
+                    {row?.gamerTag || row?.username || "—"}
+                  </div>
+                  <div className="text-xs text-[var(--fifa-mute)]">
+                    @{row?.username || "—"} · PJ {row?.played ?? 0}
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <div
+                  className="text-lg font-extrabold"
+                  style={{ color: accent }}
+                >
+                  {row?.[metricKey] ?? 0}
+                </div>
+                <div className="text-[10px] tracking-widest text-[var(--fifa-mute)]">
+                  {metricLabel}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

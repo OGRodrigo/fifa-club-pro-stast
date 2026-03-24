@@ -1,7 +1,58 @@
-// src/pages/MatchDetail.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
+
+function cardClass() {
+  return "rounded-2xl bg-fifa-card p-5 shadow-glow ring-1 ring-[var(--fifa-line)]";
+}
+
+function getClubName(clubLike, fallback = "Club") {
+  if (!clubLike) return fallback;
+  if (typeof clubLike === "string") return clubLike;
+  return clubLike.name || fallback;
+}
+
+function getClubId(clubLike) {
+  if (!clubLike) return "";
+  if (typeof clubLike === "string") return clubLike;
+  return clubLike._id || "";
+}
+
+function safeNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isNaN(n) ? fallback : n;
+}
+
+function formatFullDate(dateValue) {
+  if (!dateValue) return "—";
+  const d = new Date(dateValue);
+  if (Number.isNaN(d.getTime())) return "Fecha inválida";
+  return d.toLocaleString();
+}
+
+function resultMeta(scoreHome, scoreAway) {
+  if (scoreHome > scoreAway) {
+    return {
+      label: "VICTORIA HOME",
+      color: "var(--fifa-neon)",
+      ring: "ring-[var(--fifa-neon)]/30",
+    };
+  }
+
+  if (scoreHome < scoreAway) {
+    return {
+      label: "VICTORIA AWAY",
+      color: "var(--fifa-danger)",
+      ring: "ring-[var(--fifa-danger)]/30",
+    };
+  }
+
+  return {
+    label: "EMPATE",
+    color: "var(--fifa-cyan)",
+    ring: "ring-[var(--fifa-cyan)]/30",
+  };
+}
 
 export default function MatchDetail() {
   const { id } = useParams();
@@ -75,18 +126,16 @@ export default function MatchDetail() {
     const homeId = match?.homeClub?._id || match?.homeClub || "";
     const awayId = match?.awayClub?._id || match?.awayClub || "";
 
-    const scoreHome = Number(match?.scoreHome ?? 0);
-    const scoreAway = Number(match?.scoreAway ?? 0);
+    const scoreHome = safeNumber(match?.scoreHome, 0);
+    const scoreAway = safeNumber(match?.scoreAway, 0);
 
     const season = match?.season ?? "—";
     const competition = match?.competition || "League";
     const status = match?.status || "played";
     const stadium = match?.stadium || "Sin estadio";
-    const date = match?.date ? new Date(match.date).toLocaleString() : "—";
+    const date = formatFullDate(match?.date);
 
-    const playerStats = Array.isArray(match?.playerStats)
-      ? match.playerStats
-      : [];
+    const playerStats = Array.isArray(match?.playerStats) ? match.playerStats : [];
 
     const teamStatsHome = match?.teamStats?.home || {};
     const teamStatsAway = match?.teamStats?.away || {};
@@ -133,9 +182,11 @@ export default function MatchDetail() {
     };
   }, [match]);
 
+  const meta = resultMeta(normalized?.scoreHome ?? 0, normalized?.scoreAway ?? 0);
+
   if (loading) {
     return (
-      <div className="rounded-2xl bg-fifa-card p-6 shadow-glow ring-1 ring-[var(--fifa-line)]">
+      <div className={cardClass()}>
         <div className="text-sm text-[var(--fifa-mute)]">
           Cargando detalle del partido…
         </div>
@@ -146,7 +197,7 @@ export default function MatchDetail() {
   if (err) {
     return (
       <div className="space-y-4">
-        <div className="rounded-2xl bg-fifa-card p-6 shadow-glow ring-1 ring-[var(--fifa-line)]">
+        <div className={cardClass()}>
           <div className="text-sm text-[var(--fifa-danger)]">Error: {err}</div>
         </div>
 
@@ -164,7 +215,7 @@ export default function MatchDetail() {
   if (!match) {
     return (
       <div className="space-y-4">
-        <div className="rounded-2xl bg-fifa-card p-6 shadow-glow ring-1 ring-[var(--fifa-line)]">
+        <div className={cardClass()}>
           <div className="text-sm text-[var(--fifa-mute)]">
             No se encontró el partido.
           </div>
@@ -183,11 +234,12 @@ export default function MatchDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl bg-fifa-card p-6 shadow-glow ring-1 ring-[var(--fifa-line)]">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      {/* HERO */}
+      <div className={cardClass()}>
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <div className="text-xs font-semibold tracking-widest text-[var(--fifa-cyan)]">
-              DETALLE DEL PARTIDO
+            <div className="text-xs font-semibold tracking-[0.25em] text-[var(--fifa-cyan)]">
+              MATCH DETAIL
             </div>
 
             <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-[var(--fifa-text)]">
@@ -196,67 +248,54 @@ export default function MatchDetail() {
               {normalized.awayName}
             </h1>
 
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-[var(--fifa-mute)]">
-              <span>
-                Fecha:{" "}
-                <span className="text-[var(--fifa-text)]">
-                  {normalized.date}
-                </span>
-              </span>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Badge>{normalized.competition}</Badge>
+              <Badge>{normalized.status}</Badge>
+              <Badge>{normalized.season}</Badge>
+              <Badge>{normalized.stadium}</Badge>
+            </div>
 
-              <span>
-                Temporada:{" "}
-                <span className="text-[var(--fifa-text)]">
-                  {normalized.season}
-                </span>
-              </span>
-
-              <span>
-                Competición:{" "}
-                <span className="text-[var(--fifa-text)]">
-                  {normalized.competition}
-                </span>
-              </span>
-
-              <span>
-                Estado:{" "}
-                <span className="text-[var(--fifa-text)]">
-                  {normalized.status}
-                </span>
-              </span>
-
-              <span>
-                Estadio:{" "}
-                <span className="text-[var(--fifa-text)]">
-                  {normalized.stadium}
-                </span>
-              </span>
+            <div className="mt-4 text-sm text-[var(--fifa-mute)]">
+              {normalized.date}
             </div>
           </div>
 
-          <div className="flex flex-col items-start gap-3 lg:items-end">
-            <div className="rounded-2xl bg-black/25 p-4 ring-1 ring-[var(--fifa-line)]">
-              <div className="text-xs text-[var(--fifa-mute)]">
-                Marcador final
+          <div className="flex flex-col items-start gap-3 xl:items-end">
+            <div
+              className={`rounded-3xl bg-black/25 p-5 ring-1 ${meta.ring} min-w-[240px] text-center`}
+            >
+              <div
+                className="text-xs font-extrabold tracking-[0.2em]"
+                style={{ color: meta.color }}
+              >
+                {meta.label}
               </div>
-              <div className="mt-1 text-3xl font-extrabold text-[var(--fifa-text)]">
-                {normalized.scoreHome}{" "}
-                <span className="text-[var(--fifa-mute)]">-</span>{" "}
+
+              <div className="mt-3 text-4xl font-extrabold text-[var(--fifa-text)]">
+                {normalized.scoreHome}
+                <span className="mx-3 text-[var(--fifa-mute)]">-</span>
                 {normalized.scoreAway}
+              </div>
+
+              <div className="mt-2 text-xs text-[var(--fifa-mute)]">
+                Marcador final
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => navigate("/matches")}
-              className="rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] transition hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon"
-            >
-              Ir a partidos
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => navigate("/matches")}
+                className="rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-[var(--fifa-text)] ring-1 ring-[var(--fifa-line)] transition hover:ring-[var(--fifa-neon)]/30 hover:shadow-neon"
+              >
+                Ir a partidos
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
+      {/* KPI */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label={normalized.homeName} value={normalized.scoreHome} />
         <StatCard label={normalized.awayName} value={normalized.scoreAway} />
@@ -264,12 +303,13 @@ export default function MatchDetail() {
         <StatCard label="Temporada" value={normalized.season} />
       </div>
 
-      <div className="rounded-2xl bg-fifa-card p-5 shadow-glow ring-1 ring-[var(--fifa-line)]">
+      {/* TEAM STATS */}
+      <div className={cardClass()}>
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-cyan)]">
           TEAM STATS
         </div>
         <div className="mt-1 text-sm text-[var(--fifa-mute)]">
-          Comparativa del partido entre ambos clubes
+          Comparativa completa del partido entre ambos clubes
         </div>
 
         <div className="mt-5 grid grid-cols-1 gap-4">
@@ -375,6 +415,7 @@ export default function MatchDetail() {
         </div>
       </div>
 
+      {/* LINEUPS */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <LineupCard
           title={normalized.homeName}
@@ -389,7 +430,8 @@ export default function MatchDetail() {
         />
       </div>
 
-      <div className="rounded-2xl bg-fifa-card p-5 shadow-glow ring-1 ring-[var(--fifa-line)]">
+      {/* MVP */}
+      <div className={cardClass()}>
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-neon)]">
           MVP DEL PARTIDO
         </div>
@@ -400,14 +442,14 @@ export default function MatchDetail() {
           </div>
         ) : (
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
-            <div className="rounded-2xl bg-gradient-to-br from-[rgba(0,255,194,0.08)] to-[rgba(0,0,0,0.10)] p-4 ring-1 ring-[var(--fifa-line)]">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-yellow-400/30 to-yellow-600/20 text-xl ring-1 ring-yellow-400/40">
+            <div className="rounded-3xl bg-gradient-to-br from-[rgba(255,215,0,0.12)] to-[rgba(0,0,0,0.12)] p-5 ring-1 ring-yellow-400/30">
+              <div className="flex items-center gap-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-black/25 text-2xl ring-1 ring-yellow-400/40">
                   🏆
                 </div>
 
                 <div>
-                  <div className="text-lg font-extrabold text-[var(--fifa-text)]">
+                  <div className="text-xl font-extrabold text-[var(--fifa-text)]">
                     {mvp?.mvp?.gamerTag || mvp?.mvp?.username || "—"}
                   </div>
 
@@ -415,7 +457,7 @@ export default function MatchDetail() {
                     @{mvp?.mvp?.username || "—"}
                   </div>
 
-                  <div className="text-xs font-semibold text-yellow-400">
+                  <div className="mt-1 text-xs font-semibold tracking-[0.2em] text-yellow-400">
                     MVP DEL PARTIDO
                   </div>
                 </div>
@@ -448,6 +490,7 @@ export default function MatchDetail() {
         )}
       </div>
 
+      {/* PLAYER STATS */}
       <PlayerStatsTable
         title={`PLAYER STATS · ${normalized.homeName}`}
         subtitle="Detalle individual del club local"
@@ -462,6 +505,14 @@ export default function MatchDetail() {
         fallbackClubName={normalized.awayName}
       />
     </div>
+  );
+}
+
+function Badge({ children }) {
+  return (
+    <span className="rounded-full bg-white/5 px-3 py-1 text-[11px] font-semibold text-[var(--fifa-mute)] ring-1 ring-[var(--fifa-line)]">
+      {children}
+    </span>
   );
 }
 
@@ -488,24 +539,21 @@ function MiniStat({ label, value, accent }) {
 }
 
 function TeamStat({ label, home = 0, away = 0, suffix = "" }) {
-  const parsedHome = Number(home);
-  const parsedAway = Number(away);
-
-  const left = Number.isFinite(parsedHome) ? parsedHome : 0;
-  const right = Number.isFinite(parsedAway) ? parsedAway : 0;
+  const left = safeNumber(home, 0);
+  const right = safeNumber(away, 0);
 
   const total = left + right;
   const homePercent = total > 0 ? (left / total) * 100 : 50;
   const awayPercent = total > 0 ? (right / total) * 100 : 50;
 
   return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-xs text-[var(--fifa-mute)]">
+    <div className="space-y-2">
+      <div className="flex justify-between text-xs font-semibold tracking-wide text-[var(--fifa-mute)]">
         <span>{label}</span>
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="w-14 text-right font-bold text-[var(--fifa-neon)]">
+        <div className="w-16 text-right font-extrabold text-[var(--fifa-neon)]">
           {left}
           {suffix}
         </div>
@@ -524,7 +572,7 @@ function TeamStat({ label, home = 0, away = 0, suffix = "" }) {
           />
         </div>
 
-        <div className="w-14 text-left font-bold text-[var(--fifa-cyan)]">
+        <div className="w-16 text-left font-extrabold text-[var(--fifa-cyan)]">
           {right}
           {suffix}
         </div>
@@ -538,7 +586,7 @@ function LineupCard({ title, formation, players }) {
   const bench = players.filter((p) => p?.starter === false);
 
   return (
-    <div className="rounded-2xl bg-fifa-card p-4 shadow-glow ring-1 ring-[var(--fifa-line)]">
+    <div className={cardClass()}>
       <div className="mb-3 flex items-center justify-between">
         <div className="text-xs font-semibold tracking-widest text-[var(--fifa-neon)]">
           {title}
@@ -565,7 +613,7 @@ function LineupCard({ title, formation, players }) {
             return (
               <div
                 key={`starter-${p?.user?._id || p?.user || "player"}-${i}`}
-                className="flex justify-between rounded bg-black/20 px-3 py-1 text-sm"
+                className="flex justify-between rounded-xl bg-black/20 px-3 py-2 text-sm"
               >
                 <span className="font-semibold">{name}</span>
 
@@ -580,7 +628,7 @@ function LineupCard({ title, formation, players }) {
       )}
 
       {bench.length > 0 && (
-        <div className="mt-3 space-y-1">
+        <div className="mt-4 space-y-1">
           <div className="mb-1 text-xs text-[var(--fifa-mute)]">SUPLENTES</div>
 
           {bench.map((p, i) => {
@@ -589,7 +637,7 @@ function LineupCard({ title, formation, players }) {
             return (
               <div
                 key={`bench-${p?.user?._id || p?.user || "player"}-${i}`}
-                className="flex justify-between rounded bg-black/10 px-3 py-1 text-sm"
+                className="flex justify-between rounded-xl bg-black/10 px-3 py-2 text-sm"
               >
                 <span>{name}</span>
 
@@ -629,57 +677,23 @@ function PlayerStatsTable({ title, subtitle, rows, fallbackClubName }) {
                 <tr className="bg-black">
                   <th className="w-12 px-2 py-3 text-center font-extrabold">#</th>
                   <th className="px-3 py-3 text-left font-extrabold">JUGADOR</th>
-                  <th className="w-[16%] px-3 py-3 text-left font-extrabold">
-                    CLUB
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    POS
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    RTG
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    MIN
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    G
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    A
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    TIR
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    T. ARCO
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    PASES
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    P. COMP
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    REG
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    REG G
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    TACK
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    TACK G
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    INT
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    REC
-                  </th>
-                  <th className="w-16 px-2 py-3 text-center font-extrabold">
-                    MVP
-                  </th>
+                  <th className="w-[16%] px-3 py-3 text-left font-extrabold">CLUB</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">POS</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">RTG</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">MIN</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">G</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">A</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">TIR</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">T. ARCO</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">PASES</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">P. COMP</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">REG</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">REG G</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">TACK</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">TACK G</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">INT</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">REC</th>
+                  <th className="w-16 px-2 py-3 text-center font-extrabold">MVP</th>
                 </tr>
               </thead>
 
@@ -692,7 +706,7 @@ function PlayerStatsTable({ title, subtitle, rows, fallbackClubName }) {
                     "—";
 
                   const username = ps?.user?.username || ps?.username || "—";
-                  const clubName = ps?.club?.name || fallbackClubName || "—";
+                  const clubName = getClubName(ps?.club, fallbackClubName || "—");
 
                   return (
                     <tr
@@ -716,66 +730,29 @@ function PlayerStatsTable({ title, subtitle, rows, fallbackClubName }) {
                         </div>
                       </td>
 
-                      <td className="px-2 py-3 text-center">
-                        {ps?.position || "—"}
-                      </td>
-
+                      <td className="px-2 py-3 text-center">{ps?.position || "—"}</td>
                       <td className="px-2 py-3 text-center font-bold text-yellow-400">
-                        {Number(ps?.rating ?? 0)}
+                        {safeNumber(ps?.rating, 0)}
                       </td>
-
                       <td className="px-2 py-3 text-center">
-                        {Number(ps?.minutesPlayed ?? 0)}
+                        {safeNumber(ps?.minutesPlayed, 0)}
                       </td>
-
                       <td className="px-2 py-3 text-center font-extrabold text-[var(--fifa-neon)]">
-                        {Number(ps?.goals ?? 0)}
+                        {safeNumber(ps?.goals, 0)}
                       </td>
-
                       <td className="px-2 py-3 text-center font-extrabold text-[var(--fifa-cyan)]">
-                        {Number(ps?.assists ?? 0)}
+                        {safeNumber(ps?.assists, 0)}
                       </td>
-
-                      <td className="px-2 py-3 text-center">
-                        {Number(ps?.shots ?? 0)}
-                      </td>
-
-                      <td className="px-2 py-3 text-center">
-                        {Number(ps?.shotsOnTarget ?? 0)}
-                      </td>
-
-                      <td className="px-2 py-3 text-center">
-                        {Number(ps?.passes ?? 0)}
-                      </td>
-
-                      <td className="px-2 py-3 text-center">
-                        {Number(ps?.passesCompleted ?? 0)}
-                      </td>
-
-                      <td className="px-2 py-3 text-center">
-                        {Number(ps?.dribbles ?? 0)}
-                      </td>
-
-                      <td className="px-2 py-3 text-center">
-                        {Number(ps?.dribblesWon ?? 0)}
-                      </td>
-
-                      <td className="px-2 py-3 text-center">
-                        {Number(ps?.tackles ?? 0)}
-                      </td>
-
-                      <td className="px-2 py-3 text-center">
-                        {Number(ps?.tacklesWon ?? 0)}
-                      </td>
-
-                      <td className="px-2 py-3 text-center">
-                        {Number(ps?.interceptions ?? 0)}
-                      </td>
-
-                      <td className="px-2 py-3 text-center">
-                        {Number(ps?.recoveries ?? 0)}
-                      </td>
-
+                      <td className="px-2 py-3 text-center">{safeNumber(ps?.shots, 0)}</td>
+                      <td className="px-2 py-3 text-center">{safeNumber(ps?.shotsOnTarget, 0)}</td>
+                      <td className="px-2 py-3 text-center">{safeNumber(ps?.passes, 0)}</td>
+                      <td className="px-2 py-3 text-center">{safeNumber(ps?.passesCompleted, 0)}</td>
+                      <td className="px-2 py-3 text-center">{safeNumber(ps?.dribbles, 0)}</td>
+                      <td className="px-2 py-3 text-center">{safeNumber(ps?.dribblesWon, 0)}</td>
+                      <td className="px-2 py-3 text-center">{safeNumber(ps?.tackles, 0)}</td>
+                      <td className="px-2 py-3 text-center">{safeNumber(ps?.tacklesWon, 0)}</td>
+                      <td className="px-2 py-3 text-center">{safeNumber(ps?.interceptions, 0)}</td>
+                      <td className="px-2 py-3 text-center">{safeNumber(ps?.recoveries, 0)}</td>
                       <td className="px-2 py-3 text-center">
                         {ps?.isMVP ? (
                           <span className="text-lg text-yellow-400">🏆</span>
