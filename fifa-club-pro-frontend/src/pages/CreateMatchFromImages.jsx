@@ -46,6 +46,132 @@ function createEmptyTeamStats() {
   };
 }
 
+function computePercent(part, total) {
+  const a = Number(part);
+  const b = Number(total);
+
+  if (Number.isNaN(a) || Number.isNaN(b) || b <= 0) return 0;
+  return Math.round((a / b) * 100);
+}
+
+function buildSideTeamStats(raw = {}) {
+  const base = createEmptyTeamStats();
+
+  const shots = normalizeNumber(raw.shots, 0);
+  const shotsOnTarget = normalizeNumber(raw.shotsOnTarget, 0);
+  const passes = normalizeNumber(raw.passes, 0);
+  const passesCompleted = normalizeNumber(raw.passesCompleted, 0);
+  const tackles = normalizeNumber(raw.tackles, 0);
+  const tacklesWon = normalizeNumber(raw.tacklesWon, 0);
+
+  return {
+    ...base,
+    possession: normalizeNumber(raw.possession, 0),
+    shots,
+    shotsOnTarget,
+    shotAccuracy:
+      raw.shotAccuracy != null
+        ? normalizeNumber(raw.shotAccuracy, 0)
+        : computePercent(shotsOnTarget, shots),
+    expectedGoals: normalizeNumber(raw.expectedGoals, 0),
+    passes,
+    passesCompleted,
+    passAccuracy:
+      raw.passAccuracy != null
+        ? normalizeNumber(raw.passAccuracy, 0)
+        : computePercent(passesCompleted, passes),
+    dribbleSuccess: normalizeNumber(raw.dribbleSuccess, 0),
+    tackles,
+    tacklesWon,
+    tackleSuccess: computePercent(tacklesWon, tackles),
+    recoveries: normalizeNumber(raw.recoveries, 0),
+    interceptions: normalizeNumber(raw.interceptions, 0),
+    clearances: normalizeNumber(raw.clearances, 0),
+    blocks: normalizeNumber(raw.blocks, 0),
+    saves: normalizeNumber(raw.saves, 0),
+    fouls: normalizeNumber(raw.fouls, 0),
+    offsides: normalizeNumber(raw.offsides, 0),
+    corners: normalizeNumber(raw.corners, 0),
+    freeKicks: normalizeNumber(raw.freeKicks, 0),
+    penalties: normalizeNumber(raw.penalties, 0),
+    yellowCards: normalizeNumber(raw.yellowCards, 0),
+    redCards: normalizeNumber(raw.redCards, 0),
+  };
+}
+
+function buildImportedTeamStats(aiStats = {}, mySide = "home") {
+  const detectedHome = buildSideTeamStats({
+    possession: aiStats?.possessionHome,
+    shots: aiStats?.shotsHome,
+    shotsOnTarget: aiStats?.shotsOnTargetHome,
+    shotAccuracy: aiStats?.shotAccuracyHome,
+    expectedGoals: aiStats?.xgHome,
+    passes: aiStats?.passesHome,
+    passesCompleted: aiStats?.passesCompletedHome,
+    passAccuracy: aiStats?.passAccuracyHome,
+    dribbleSuccess: aiStats?.dribbleSuccessHome,
+    tackles: aiStats?.tacklesHome,
+    tacklesWon: aiStats?.tacklesWonHome,
+    recoveries: aiStats?.recoveriesHome,
+    interceptions: aiStats?.interceptionsHome,
+    clearances: aiStats?.clearancesHome,
+    blocks: aiStats?.blocksHome,
+    saves: aiStats?.savesHome,
+    fouls: aiStats?.foulsHome,
+    offsides: aiStats?.offsidesHome,
+    corners: aiStats?.cornersHome,
+    freeKicks: aiStats?.freeKicksHome,
+    penalties: aiStats?.penaltiesHome,
+    yellowCards: aiStats?.yellowCardsHome,
+    redCards: aiStats?.redCardsHome,
+  });
+
+  const detectedAway = buildSideTeamStats({
+    possession: aiStats?.possessionAway,
+    shots: aiStats?.shotsAway,
+    shotsOnTarget: aiStats?.shotsOnTargetAway,
+    shotAccuracy: aiStats?.shotAccuracyAway,
+    expectedGoals: aiStats?.xgAway,
+    passes: aiStats?.passesAway,
+    passesCompleted: aiStats?.passesCompletedAway,
+    passAccuracy: aiStats?.passAccuracyAway,
+    dribbleSuccess: aiStats?.dribbleSuccessAway,
+    tackles: aiStats?.tacklesAway,
+    tacklesWon: aiStats?.tacklesWonAway,
+    recoveries: aiStats?.recoveriesAway,
+    interceptions: aiStats?.interceptionsAway,
+    clearances: aiStats?.clearancesAway,
+    blocks: aiStats?.blocksAway,
+    saves: aiStats?.savesAway,
+    fouls: aiStats?.foulsAway,
+    offsides: aiStats?.offsidesAway,
+    corners: aiStats?.cornersAway,
+    freeKicks: aiStats?.freeKicksAway,
+    penalties: aiStats?.penaltiesAway,
+    yellowCards: aiStats?.yellowCardsAway,
+    redCards: aiStats?.redCardsAway,
+  });
+
+  if (mySide === "away") {
+    return {
+      home: detectedAway,
+      away: detectedHome,
+    };
+  }
+
+  return {
+    home: detectedHome,
+    away: detectedAway,
+  };
+}
+
+function countImportedStats(stats = {}) {
+  const values = Object.values(stats || {});
+  return values.filter(
+    (value) => value !== null && value !== undefined && Number(value) !== 0
+  ).length;
+}
+
 function cardClass() {
   return "rounded-2xl border border-white/10 bg-white/5 p-6";
 }
@@ -199,8 +325,18 @@ export default function CreateMatchFromImages() {
     return normalizeName(detectedOpponentName) === normalizeName(selectedOpponentLabel);
   }, [detectedOpponentName, selectedOpponentLabel]);
 
+    const importedTeamStats = useMemo(() => {
+    return buildImportedTeamStats(aiResult?.matchDraft?.stats || {}, mySide);
+  }, [aiResult, mySide]);
+
+  const importedStatsCount = useMemo(() => {
+    const homeCount = countImportedStats(importedTeamStats?.home);
+    const awayCount = countImportedStats(importedTeamStats?.away);
+    return homeCount + awayCount;
+  }, [importedTeamStats]);
+
   const scoreLooksUsable = hasDetectedScore;
-  const statsLookUsable = confidenceStats >= 0.5;
+    const statsLookUsable = importedStatsCount >= 6 || confidenceStats >= 0.5;
 
   useEffect(() => {
     if (!detectedOpponentName) {
@@ -324,10 +460,7 @@ export default function CreateMatchFromImages() {
         status: status || aiResult?.matchDraft?.status || "played",
         scoreHome: finalScoreHome,
         scoreAway: finalScoreAway,
-        teamStats: {
-          home: createEmptyTeamStats(),
-          away: createEmptyTeamStats(),
-        },
+                teamStats: importedTeamStats,
         lineups: {
           home: { formation: "", players: [] },
           away: { formation: "", players: [] },
@@ -651,6 +784,45 @@ export default function CreateMatchFromImages() {
         </div>
       </div>
     </div>
+
+    <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+      <div className="text-xs font-semibold uppercase tracking-wide text-emerald-200/80">
+        Team stats importados
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+          <div className="text-sm font-semibold text-white">Home</div>
+          <div className="mt-2 space-y-1 text-sm text-slate-300">
+            <div>Posesión: {importedTeamStats.home.possession}</div>
+            <div>Tiros: {importedTeamStats.home.shots}</div>
+            <div>xG: {importedTeamStats.home.expectedGoals}</div>
+            <div>Pases: {importedTeamStats.home.passes}</div>
+            <div>Precisión pase: {importedTeamStats.home.passAccuracy}%</div>
+            <div>Entradas: {importedTeamStats.home.tackles}</div>
+            <div>Recuperaciones: {importedTeamStats.home.recoveries}</div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+          <div className="text-sm font-semibold text-white">Away</div>
+          <div className="mt-2 space-y-1 text-sm text-slate-300">
+            <div>Posesión: {importedTeamStats.away.possession}</div>
+            <div>Tiros: {importedTeamStats.away.shots}</div>
+            <div>xG: {importedTeamStats.away.expectedGoals}</div>
+            <div>Pases: {importedTeamStats.away.passes}</div>
+            <div>Precisión pase: {importedTeamStats.away.passAccuracy}%</div>
+            <div>Entradas: {importedTeamStats.away.tackles}</div>
+            <div>Recuperaciones: {importedTeamStats.away.recoveries}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 text-xs text-slate-400">
+        Campos detectados con valor distinto de 0: {importedStatsCount}
+      </div>
+    </div>
+
 
     {!statsLookUsable ? (
       <div className="mt-4 rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-yellow-100">

@@ -1,5 +1,3 @@
-// src/services/ai/matchImageMerge.service.js
-
 function createEmptyDraft(meta = {}) {
   return {
     matchDraft: {
@@ -19,36 +17,57 @@ function createEmptyDraft(meta = {}) {
       stats: {
         possessionHome: null,
         possessionAway: null,
+
         shotsHome: null,
         shotsAway: null,
         shotsOnTargetHome: null,
         shotsOnTargetAway: null,
+        shotAccuracyHome: null,
+        shotAccuracyAway: null,
+
+        xgHome: null,
+        xgAway: null,
+
         passesHome: null,
         passesAway: null,
+        passesCompletedHome: null,
+        passesCompletedAway: null,
         passAccuracyHome: null,
         passAccuracyAway: null,
+
+        dribbleSuccessHome: null,
+        dribbleSuccessAway: null,
+
         tacklesHome: null,
         tacklesAway: null,
+        tacklesWonHome: null,
+        tacklesWonAway: null,
+
         recoveriesHome: null,
         recoveriesAway: null,
+        interceptionsHome: null,
+        interceptionsAway: null,
+        clearancesHome: null,
+        clearancesAway: null,
+        blocksHome: null,
+        blocksAway: null,
         savesHome: null,
         savesAway: null,
+
         foulsHome: null,
         foulsAway: null,
         offsidesHome: null,
         offsidesAway: null,
         cornersHome: null,
         cornersAway: null,
+        freeKicksHome: null,
+        freeKicksAway: null,
+        penaltiesHome: null,
+        penaltiesAway: null,
         yellowCardsHome: null,
         yellowCardsAway: null,
         redCardsHome: null,
         redCardsAway: null,
-        xgHome: null,
-        xgAway: null,
-        dribbleSuccessHome: null,
-        dribbleSuccessAway: null,
-        shotAccuracyHome: null,
-        shotAccuracyAway: null,
       },
       sourceImages: [],
     },
@@ -81,7 +100,9 @@ function mergeStats(targetStats, incomingStats) {
 function average(nums = []) {
   const valid = nums.filter((n) => typeof n === "number");
   if (!valid.length) return 0;
-  return Number((valid.reduce((acc, n) => acc + n, 0) / valid.length).toFixed(2));
+  return Number(
+    (valid.reduce((acc, n) => acc + n, 0) / valid.length).toFixed(2)
+  );
 }
 
 function pickBestScoreResult(parsedResults = []) {
@@ -96,7 +117,9 @@ function pickBestScoreResult(parsedResults = []) {
       }
 
       const notes = Array.isArray(result?.notes) ? result.notes : [];
-      const methodNote = notes.find((note) => String(note).startsWith("Método score:"));
+      const methodNote = notes.find((note) =>
+        String(note).startsWith("Método score:")
+      );
       const confidenceNote = notes.find((note) =>
         String(note).startsWith("Confianza score imagen:")
       );
@@ -127,17 +150,21 @@ function pickBestScoreResult(parsedResults = []) {
     })
     .filter(Boolean);
 
-  if (!candidates.length) {
-    return null;
+  if (!candidates.length) return null;
+
+candidates.sort((a, b) => {
+  // 1. PRIMERO confianza real (CRÍTICO)
+  if (b.scoreImageConfidence !== a.scoreImageConfidence) {
+    return b.scoreImageConfidence - a.scoreImageConfidence;
   }
 
-  candidates.sort((a, b) => {
-    if (b.priority !== a.priority) return b.priority - a.priority;
-    if (b.scoreImageConfidence !== a.scoreImageConfidence) {
-      return b.scoreImageConfidence - a.scoreImageConfidence;
-    }
-    return 0;
-  });
+  // 2. Luego método
+  if (b.priority !== a.priority) {
+    return b.priority - a.priority;
+  }
+
+  return 0;
+});
 
   return candidates[0];
 }
@@ -146,41 +173,38 @@ function mergeMatchImageResults({ parsedResults = [], meta = {} }) {
   const output = createEmptyDraft(meta);
 
   parsedResults.forEach((result) => {
-    const draft = result.partialDraft || {};
-    const stats = draft.stats || {};
+    const draft = result?.partialDraft || {};
+    const stats = draft?.stats || {};
 
-    fillIfEmpty(output.matchDraft.homeClub, "name", draft.homeClub?.name ?? null);
+    fillIfEmpty(output.matchDraft.homeClub, "name", draft?.homeClub?.name ?? null);
     fillIfEmpty(
       output.matchDraft.homeClub,
       "normalizedName",
-      draft.homeClub?.normalizedName ?? null
+      draft?.homeClub?.normalizedName ?? null
     );
 
-    fillIfEmpty(output.matchDraft.awayClub, "name", draft.awayClub?.name ?? null);
+    fillIfEmpty(output.matchDraft.awayClub, "name", draft?.awayClub?.name ?? null);
     fillIfEmpty(
       output.matchDraft.awayClub,
       "normalizedName",
-      draft.awayClub?.normalizedName ?? null
+      draft?.awayClub?.normalizedName ?? null
     );
 
-      // score no se fija aquí con fillIfEmpty;
-  // se decide al final con pickBestScoreResult(...)
-
-    fillIfEmpty(output.matchDraft, "minute", draft.minute);
-    fillIfEmpty(output.matchDraft, "status", draft.status);
-    fillIfEmpty(output.matchDraft, "season", draft.season);
+    fillIfEmpty(output.matchDraft, "minute", draft?.minute);
+    fillIfEmpty(output.matchDraft, "status", draft?.status);
+    fillIfEmpty(output.matchDraft, "season", draft?.season);
 
     mergeStats(output.matchDraft.stats, stats);
 
-    if (result.sourceImage) {
+    if (result?.sourceImage) {
       output.matchDraft.sourceImages.push(result.sourceImage);
     }
 
-    if (Array.isArray(result.notes)) {
+    if (Array.isArray(result?.notes)) {
       output.notes.push(...result.notes);
     }
 
-    if (Array.isArray(result.conflicts)) {
+    if (Array.isArray(result?.conflicts)) {
       output.conflicts.push(...result.conflicts);
     }
   });
@@ -199,10 +223,10 @@ function mergeMatchImageResults({ parsedResults = [], meta = {} }) {
   }
 
   output.confidence = {
-    overall: average(parsedResults.map((r) => r.confidence?.overall)),
-    score: average(parsedResults.map((r) => r.confidence?.score)),
-    clubs: average(parsedResults.map((r) => r.confidence?.clubs)),
-    stats: average(parsedResults.map((r) => r.confidence?.stats)),
+    overall: average(parsedResults.map((r) => r?.confidence?.overall)),
+    score: average(parsedResults.map((r) => r?.confidence?.score)),
+    clubs: average(parsedResults.map((r) => r?.confidence?.clubs)),
+    stats: average(parsedResults.map((r) => r?.confidence?.stats)),
   };
 
   const missingFields = [];

@@ -209,30 +209,38 @@ function cutAtSectionKeyword(value = "") {
 }
 
 function extractClubNamesFromText(text = "") {
-  const normalized = String(text)
-    .replace(/\n/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const normalized = cleanOCRText(text);
 
-  const match = normalized.match(
-    /^(.+?)\s+vs\s+\d{1,2}\s*[:\-–]\s*\d{1,2}\s+vs\s+(.+)$/i
+  // Detecta "A vs B"
+  const vsMatch = normalized.match(
+    /([a-z0-9\s]{3,40})\s+vs\s+[0-9]{1,2}\s*[:\-–]\s*[0-9]{1,2}\s+([a-z0-9\s]{3,40})/i
   );
 
-  if (match) {
-    const home = cleanClubCandidate(match[1]);
-    const awayRaw = cleanClubCandidate(match[2]);
-    const away = cutAtSectionKeyword(awayRaw);
-
+  if (vsMatch) {
     return {
-      home: home || null,
-      away: away || null,
+      home: vsMatch[1].trim(),
+      away: vsMatch[2].trim(),
     };
   }
 
-  return {
-    home: null,
-    away: null,
-  };
+  // fallback: líneas OCR
+  const words = normalized.split(" ");
+
+  const candidates = words.filter(
+    (w) =>
+      w.length > 3 &&
+      !/\d/.test(w) &&
+      !["vs", "resumen", "posesion", "tiros", "pases"].includes(w)
+  );
+
+  if (candidates.length >= 2) {
+    return {
+      home: candidates[0],
+      away: candidates[1],
+    };
+  }
+
+  return { home: null, away: null };
 }
 
 function extractClubNamesFromLines(lines = [], text = "") {
@@ -256,37 +264,236 @@ function extractClubNamesFromLines(lines = [], text = "") {
   };
 }
 
-function normalizeOcrTextForStats(text = "") {
+function cleanOCRText(text = "") {
   return String(text)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w\s:%.\-]/g, " ")
     .replace(/\r/g, "\n")
     .replace(/[|]/g, " ")
     .replace(/\s+/g, " ")
+    .toLowerCase()
     .trim();
 }
 
-function extractPercentPairs(text = "") {
+function normalizeOcrTextForStats(text = "") {
+  return cleanOCRText(text);
+}
+
+function labelToRegex(label = "") {
+  return String(label)
+    .trim()
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "\\s+");
+}
+
+function toSafeNumber(value, allowFloat = false) {
+  if (value == null || value === "") return null;
+  const parsed = allowFloat ? Number(value) : Number.parseInt(value, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function detectImageType(text = "") {
+  const normalized = cleanOCRText(text);
+
+  if (!normalized) return "unknown";
+
+  if (
+    normalized.includes("pases en general") ||
+    normalized.includes("total de pases") ||
+    normalized.includes("completados") ||
+    normalized.includes("interceptados") ||
+    normalized.includes("precision de pases")
+  ) {
+    return "passes_screen";
+  }
+
+  if (
+    normalized.includes("defensa en general") ||
+    normalized.includes("entradas de frente") ||
+    normalized.includes("entradas con exito") ||
+    normalized.includes("recuperaciones") ||
+    normalized.includes("bloqueos") ||
+    normalized.includes("despejes") ||
+    normalized.includes("atajadas") ||
+    normalized.includes("tarjetas amarillas") ||
+    normalized.includes("tarjetas rojas")
+  ) {
+    return "defense_screen";
+  }
+
+  if (
+    normalized.includes("posesion total") ||
+    normalized.includes("% de posesion") ||
+    normalized.includes("amenaza") ||
+    normalized.includes("global posesion")
+  ) {
+    return "possession_screen";
+  }
+
+  if (
+    normalized.includes("tiros a puerta") ||
+    normalized.includes("precision en tiros")
+  ) {
+    return "shots_screen";
+  }
+
+  if (
+    normalized.includes("resumen") ||
+    normalized.includes("goles esperados") ||
+    normalized.includes("tasa de exito en regates") ||
+    normalized.includes("precision de pases") ||
+    normalized.includes("precision en tiros")
+  ) {
+    return "scoreboard_summary";
+  }
+
+  return "unknown";
+}
+
+function extractLabeledPair(text = "", labels = [], options = {}) {
+  const { allowFloat = false } = options;
   const normalized = normalizeOcrTextForStats(text);
 
-  const matches = [...normalized.matchAll(/(\d{1,3})\s*%/g)].map((m) =>
-    Number(m[1])
-  );
+  const numberPattern = allowFloat
+    ? "(\\d{1,3}(?:\\.\\d+)?)"
+    : "(\\d{1,3})";
 
-  return matches.filter((n) => Number.isInteger(n) && n >= 0 && n <= 100);
+  for (const label of labels) {
+    const labelRegex = labelToRegex(label);
+
+    const regex = new RegExp(
+      `${numberPattern}\\s*${labelRegex}\\s*${numberPattern}`,
+      "i"
+    );
+
+    const match = normalized.match(regex);
+
+    if (match) {
+      const home = toSafeNumber(match[1], allowFloat);
+      const away = toSafeNumber(match[2], allowFloat);
+
+      if (home !== null && away !== null) {
+        return { home, away };
+      }
+    }
+  }
+
+  return { home: null, away: null };
+}
+
+function extractRepeatedPercentMetric(text = "", labels = []) {
+  const normalized = normalizeOcrTextForStats(text);
+
+  for (const label of labels) {
+    const labelRegex = labelToRegex(label);
+    const regex = new RegExp(`(\\d{1,3})\\s*%\\s*${labelRegex}`, "gi");
+
+    const values = [];
+    let match;
+
+    while ((match = regex.exec(normalized)) !== null) {
+      const value = Number(match[1]);
+      if (Number.isInteger(value) && value >= 0 && value <= 100) {
+        values.push(value);
+      }
+    }
+
+    if (values.length >= 2) {
+      return {
+        home: values[0],
+        away: values[1],
+      };
+    }
+  }
+
+  return { home: null, away: null };
+}
+
+function pickPair(primary = {}, fallback = {}) {
+  return {
+    home:
+      primary?.home !== null && primary?.home !== undefined
+        ? primary.home
+        : fallback?.home ?? null,
+    away:
+      primary?.away !== null && primary?.away !== undefined
+        ? primary.away
+        : fallback?.away ?? null,
+  };
 }
 
 function extractPossessionFromText(text = "") {
-  const percents = extractPercentPairs(text);
+  const normalized = normalizeOcrTextForStats(text);
 
-  /**
-   * Heurística:
-   * buscamos el primer par que sume ~100
-   */
+  // Caso 1: pantalla de posesión tipo "45% POSESION TOTAL 55%"
+  const sidePair = normalized.match(
+    /(\d{1,3})\s*%\s*(?:posesion total|posesion|global)[\s\S]{0,80}(\d{1,3})\s*%/i
+  );
+
+  if (sidePair) {
+    const home = Number(sidePair[1]);
+    const away = Number(sidePair[2]);
+
+    if (
+      Number.isInteger(home) &&
+      Number.isInteger(away) &&
+      home >= 0 &&
+      away >= 0 &&
+      home <= 100 &&
+      away <= 100 &&
+      home + away >= 90 &&
+      home + away <= 110
+    ) {
+      return {
+        possessionHome: home,
+        possessionAway: away,
+      };
+    }
+  }
+
+  // Caso 2: línea central tipo "52 % de posesion 48"
+  const centralPair = normalized.match(
+    /(\d{1,3})\s*(?:%|)\s*(?:de\s*)?posesi\w*\s*(\d{1,3})/i
+  );
+
+  if (centralPair) {
+    const home = Number(centralPair[1]);
+    const away = Number(centralPair[2]);
+
+    if (
+      Number.isInteger(home) &&
+      Number.isInteger(away) &&
+      home >= 0 &&
+      away >= 0 &&
+      home <= 100 &&
+      away <= 100 &&
+      home + away >= 90 &&
+      home + away <= 110
+    ) {
+      return {
+        possessionHome: home,
+        possessionAway: away,
+      };
+    }
+  }
+
+  // Caso 3: fallback buscando dos porcentajes que sumen ~100
+  const percents = [...normalized.matchAll(/(\d{1,3})\s*%/g)].map((m) =>
+    Number(m[1])
+  );
+
   for (let i = 0; i < percents.length - 1; i += 1) {
     const home = percents[i];
     const away = percents[i + 1];
     const total = home + away;
 
-    if (total >= 98 && total <= 102) {
+    if (
+      Number.isInteger(home) &&
+      Number.isInteger(away) &&
+      total >= 90 &&
+      total <= 110
+    ) {
       return {
         possessionHome: home,
         possessionAway: away,
@@ -300,55 +507,188 @@ function extractPossessionFromText(text = "") {
   };
 }
 
-/**
- * Intenta extraer stats básicas desde texto OCR.
- * Por ahora solo dejamos estructura sin asumir demasiado.
- */
-function extractNumberPairs(text = "") {
-  const normalized = normalizeOcrTextForStats(text);
-
-  const matches = [...normalized.matchAll(/\b(\d{1,2})\b/g)].map((m) =>
-    Number(m[1])
-  );
-
-  return matches.filter((n) => Number.isInteger(n) && n >= 0 && n <= 99);
+function extractShotsFromText(text = "") {
+  const pair = extractLabeledPair(text, ["tiros", "shots"]);
+  return {
+    shotsHome: pair.home,
+    shotsAway: pair.away,
+  };
 }
 
-function extractShotsFromText(text = "") {
-  const normalized = normalizeOcrTextForStats(text).toLowerCase();
-
-  const keywordMatch = normalized.match(
-    /(tiros|shots)([\s\S]{0,120})/i
+function extractXgFromText(text = "") {
+  const pair = extractLabeledPair(
+    text,
+    ["goles esperados", "expected goals"],
+    { allowFloat: true }
   );
-
-  if (!keywordMatch) {
-    return {
-      shotsHome: null,
-      shotsAway: null,
-    };
-  }
-
-  const windowText = keywordMatch[2] || "";
-  const nums = [...windowText.matchAll(/\b(\d{1,2})\b/g)].map((m) =>
-    Number(m[1])
-  );
-
-  if (nums.length >= 2) {
-    return {
-      shotsHome: nums[0],
-      shotsAway: nums[1],
-    };
-  }
 
   return {
-    shotsHome: null,
-    shotsAway: null,
+    xgHome: pair.home,
+    xgAway: pair.away,
+  };
+}
+
+function extractPassesFromText(text = "") {
+  const totalPasses = extractLabeledPair(text, ["total de pases", "pases"]);
+  const completed = extractLabeledPair(text, ["completados"]);
+  const intercepted = extractLabeledPair(text, ["interceptados"]);
+  const freeStyleOffsides = extractLabeledPair(text, [
+    "fuera de juego",
+    "fueras de lugar",
+  ]);
+
+  const accuracy = extractRepeatedPercentMetric(text, [
+  "precision de pases",
+]);
+
+  return {
+    passesHome: totalPasses.home,
+    passesAway: totalPasses.away,
+    passesCompletedHome: completed.home,
+    passesCompletedAway: completed.away,
+    interceptionsHome: intercepted.home,
+    interceptionsAway: intercepted.away,
+    offsidesHome: freeStyleOffsides.home,
+    offsidesAway: freeStyleOffsides.away,
+  };
+}
+
+function extractDefenseFromText(text = "") {
+  const tackles = pickPair(
+    extractLabeledPair(text, ["entradas de frente", "entradas"]),
+    extractLabeledPair(text, ["entradas"])
+  );
+
+  const tacklesWon = pickPair(
+    extractLabeledPair(text, ["entradas de frente ganadas", "entradas con exito"]),
+    extractLabeledPair(text, ["entradas con exito"])
+  );
+
+  const recoveries = extractLabeledPair(text, ["recuperaciones"]);
+  const blocks = extractLabeledPair(text, ["bloqueos"]);
+  const saves = extractLabeledPair(text, ["atajadas"]);
+  const clearances = extractLabeledPair(text, ["despejes"]);
+  const fouls = pickPair(
+    extractLabeledPair(text, ["faltas cometidas"]),
+    extractLabeledPair(text, ["faltas"])
+  );
+  const penalties = pickPair(
+    extractLabeledPair(text, ["penales cometidos"]),
+    extractLabeledPair(text, ["penales"])
+  );
+  const yellowCards = extractLabeledPair(text, ["tarjetas amarillas"]);
+  const redCards = extractLabeledPair(text, ["tarjetas rojas"]);
+  const corners = extractLabeledPair(text, ["tiros de esquina"]);
+  const freeKicks = extractLabeledPair(text, ["tiros libres"]);
+  const offsides = pickPair(
+    extractLabeledPair(text, ["fueras de lugar"]),
+    extractLabeledPair(text, ["fuera de juego"])
+  );
+
+  return {
+    tacklesHome: tackles.home,
+    tacklesAway: tackles.away,
+
+    tacklesWonHome: tacklesWon.home,
+    tacklesWonAway: tacklesWon.away,
+
+    recoveriesHome: recoveries.home,
+    recoveriesAway: recoveries.away,
+
+    blocksHome: blocks.home,
+    blocksAway: blocks.away,
+
+    savesHome: saves.home,
+    savesAway: saves.away,
+
+    clearancesHome: clearances.home,
+    clearancesAway: clearances.away,
+
+    foulsHome: fouls.home,
+    foulsAway: fouls.away,
+
+    penaltiesHome: penalties.home,
+    penaltiesAway: penalties.away,
+
+    yellowCardsHome: yellowCards.home,
+    yellowCardsAway: yellowCards.away,
+
+    redCardsHome: redCards.home,
+    redCardsAway: redCards.away,
+
+    cornersHome: corners.home,
+    cornersAway: corners.away,
+
+    freeKicksHome: freeKicks.home,
+    freeKicksAway: freeKicks.away,
+
+    offsidesHome: offsides.home,
+    offsidesAway: offsides.away,
+  };
+}
+
+function extractCirclePercentsFromText(text = "") {
+  const normalized = normalizeOcrTextForStats(text);
+
+  function extractTwoPercentsAroundLabel(labelRegexSource) {
+    const regex = new RegExp(
+      `(\\d{1,3})\\s*%[\\s\\S]{0,80}${labelRegexSource}[\\s\\S]{0,120}(\\d{1,3})\\s*%`,
+      "i"
+    );
+
+    const match = normalized.match(regex);
+    if (!match) {
+      return { home: null, away: null };
+    }
+
+    const home = Number(match[1]);
+    const away = Number(match[2]);
+
+    if (
+      Number.isInteger(home) &&
+      Number.isInteger(away) &&
+      home >= 0 &&
+      away >= 0 &&
+      home <= 100 &&
+      away <= 100
+    ) {
+      return { home, away };
+    }
+
+    return { home: null, away: null };
+  }
+
+  const dribble = extractTwoPercentsAroundLabel(
+    "tasa\\s*de\\s*exito\\s*en\\s*regates|exito\\s*en\\s*regates|regates"
+  );
+
+  const shotAccuracy = extractTwoPercentsAroundLabel(
+    "precision\\s*en\\s*tiros|precision\\s*de\\s*tiro|tiros"
+  );
+
+  const passAccuracy = extractTwoPercentsAroundLabel(
+    "precision\\s*de\\s*pases|precision\\s*en\\s*pases|pases"
+  );
+
+  return {
+    dribbleSuccessHome: dribble.home,
+    dribbleSuccessAway: dribble.away,
+
+    shotAccuracyHome: shotAccuracy.home,
+    shotAccuracyAway: shotAccuracy.away,
+
+    passAccuracyHome: passAccuracy.home,
+    passAccuracyAway: passAccuracy.away,
   };
 }
 
 function extractStatsFromText(text = "") {
   const possession = extractPossessionFromText(text);
   const shots = extractShotsFromText(text);
+  const xg = extractXgFromText(text);
+  const passes = extractPassesFromText(text);
+  const defense = extractDefenseFromText(text);
+  const circles = extractCirclePercentsFromText(text);
 
   return {
     possessionHome: possession.possessionHome,
@@ -360,36 +700,65 @@ function extractStatsFromText(text = "") {
     shotsOnTargetHome: null,
     shotsOnTargetAway: null,
 
-    passesHome: null,
-    passesAway: null,
-    passAccuracyHome: null,
-    passAccuracyAway: null,
+    passesHome: passes.passesHome,
+    passesAway: passes.passesAway,
 
-    tacklesHome: null,
-    tacklesAway: null,
-    recoveriesHome: null,
-    recoveriesAway: null,
-    savesHome: null,
-    savesAway: null,
+    passesCompletedHome: passes.passesCompletedHome,
+    passesCompletedAway: passes.passesCompletedAway,
 
-    foulsHome: null,
-    foulsAway: null,
-    offsidesHome: null,
-    offsidesAway: null,
-    cornersHome: null,
-    cornersAway: null,
+    passAccuracyHome: circles.passAccuracyHome,
+    passAccuracyAway: circles.passAccuracyAway,
 
-    yellowCardsHome: null,
-    yellowCardsAway: null,
-    redCardsHome: null,
-    redCardsAway: null,
+    tacklesHome: defense.tacklesHome,
+    tacklesAway: defense.tacklesAway,
 
-    xgHome: null,
-    xgAway: null,
-    dribbleSuccessHome: null,
-    dribbleSuccessAway: null,
-    shotAccuracyHome: null,
-    shotAccuracyAway: null,
+    tacklesWonHome: defense.tacklesWonHome,
+    tacklesWonAway: defense.tacklesWonAway,
+
+    recoveriesHome: defense.recoveriesHome,
+    recoveriesAway: defense.recoveriesAway,
+
+    interceptionsHome: passes.interceptionsHome,
+    interceptionsAway: passes.interceptionsAway,
+
+    clearancesHome: defense.clearancesHome,
+    clearancesAway: defense.clearancesAway,
+
+    blocksHome: defense.blocksHome,
+    blocksAway: defense.blocksAway,
+
+    savesHome: defense.savesHome,
+    savesAway: defense.savesAway,
+
+    foulsHome: defense.foulsHome,
+    foulsAway: defense.foulsAway,
+
+    offsidesHome: defense.offsidesHome ?? passes.offsidesHome,
+    offsidesAway: defense.offsidesAway ?? passes.offsidesAway,
+
+    cornersHome: defense.cornersHome,
+    cornersAway: defense.cornersAway,
+
+    freeKicksHome: defense.freeKicksHome,
+    freeKicksAway: defense.freeKicksAway,
+
+    penaltiesHome: defense.penaltiesHome,
+    penaltiesAway: defense.penaltiesAway,
+
+    yellowCardsHome: defense.yellowCardsHome,
+    yellowCardsAway: defense.yellowCardsAway,
+
+    redCardsHome: defense.redCardsHome,
+    redCardsAway: defense.redCardsAway,
+
+    xgHome: xg.xgHome,
+    xgAway: xg.xgAway,
+
+    dribbleSuccessHome: circles.dribbleSuccessHome,
+    dribbleSuccessAway: circles.dribbleSuccessAway,
+
+    shotAccuracyHome: circles.shotAccuracyHome,
+    shotAccuracyAway: circles.shotAccuracyAway,
   };
 }
 
@@ -451,8 +820,8 @@ function usedFieldsByType(type = "unknown") {
  * Parser de una sola imagen
  */
 async function parseSingleImage(image, meta = {}) {
-  const type = image.type || "unknown";
-  const baseConfidence = getBaseConfidenceByType(type);
+  let type = image.type || "unknown";
+  let baseConfidence = getBaseConfidenceByType(type);
 
   let ocr = {
     text: "",
@@ -463,7 +832,7 @@ async function parseSingleImage(image, meta = {}) {
   try {
     ocr = await readImageText(image.buffer);
   } catch (error) {
-        return {
+    return {
       sourceImage: {
         index: image.index,
         type,
@@ -486,7 +855,7 @@ async function parseSingleImage(image, meta = {}) {
         minute: null,
         status: null,
         season: meta.season || null,
-                stats: extractStatsFromText(""),
+        stats: extractStatsFromText(""),
       },
       confidence: buildFieldConfidence(baseConfidence),
       notes: [
@@ -499,6 +868,13 @@ async function parseSingleImage(image, meta = {}) {
   }
 
   const text = ocr.text || "";
+
+  const detectedType = detectImageType(text);
+  if (type === "unknown" && detectedType !== "unknown") {
+    type = detectedType;
+    baseConfidence = getBaseConfidenceByType(type);
+  }
+
   const score = extractScoreFromText(text);
   const clubs = extractClubNamesFromLines(ocr.lines, text);
   const status = extractMatchStatus(text);
@@ -523,19 +899,22 @@ async function parseSingleImage(image, meta = {}) {
     minute: null,
     status: canUseScoreboardData ? status : null,
     season: meta.season || null,
-    stats: extractStatsFromText(text),
+    stats,
   };
 
   const notes = [
-  `Imagen clasificada como '${type}'.`,
-  "OCR ejecutado correctamente.",
-  `Texto OCR preview: ${text.slice(0, 120)}`,
-  `Score detectado: ${score.home ?? "null"} - ${score.away ?? "null"}`,
-  `Método score: ${score.method ?? "null"}`,
-  `Confianza score imagen: ${score.confidence ?? 0}`,
-  `Clubes detectados: ${clubs.home ?? "null"} vs ${clubs.away ?? "null"}`,
-  `Tiros detectados: ${stats.shotsHome ?? "null"} - ${stats.shotsAway ?? "null"}`,
-];
+    `Imagen clasificada como '${type}'.`,
+    "OCR ejecutado correctamente.",
+    `Texto OCR preview: ${text.slice(0, 120)}`,
+    `Score detectado: ${score.home ?? "null"} - ${score.away ?? "null"}`,
+    `Método score: ${score.method ?? "null"}`,
+    `Confianza score imagen: ${score.confidence ?? 0}`,
+    `Clubes detectados: ${clubs.home ?? "null"} vs ${clubs.away ?? "null"}`,
+    `Posesión detectada: ${stats.possessionHome ?? "null"} - ${stats.possessionAway ?? "null"}`,
+    `Tiros detectados: ${stats.shotsHome ?? "null"} - ${stats.shotsAway ?? "null"}`,
+    `Pases detectados: ${stats.passesHome ?? "null"} - ${stats.passesAway ?? "null"}`,
+    `Recuperaciones detectadas: ${stats.recoveriesHome ?? "null"} - ${stats.recoveriesAway ?? "null"}`,
+  ];
 
   if (ocr.text) {
     notes.push("Texto OCR detectado.");
