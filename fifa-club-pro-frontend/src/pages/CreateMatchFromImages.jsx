@@ -54,6 +54,30 @@ function inputClass() {
   return "w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400/40";
 }
 
+function primaryButtonClass(color = "emerald") {
+  if (color === "sky") {
+    return "rounded-xl bg-sky-600 px-5 py-2.5 font-semibold text-white hover:bg-sky-500 disabled:opacity-50";
+  }
+
+  return "rounded-xl bg-emerald-600 px-5 py-2.5 font-semibold text-white hover:bg-emerald-500 disabled:opacity-50";
+}
+
+function secondaryButtonClass() {
+  return "rounded-xl border border-white/10 px-5 py-2.5 font-semibold text-white hover:bg-white/10 disabled:opacity-50";
+}
+
+function errorBoxClass() {
+  return "rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200";
+}
+
+function successBoxClass() {
+  return "rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-100";
+}
+
+function warningBoxClass() {
+  return "rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-yellow-100";
+}
+
 export default function CreateMatchFromImages() {
   const navigate = useNavigate();
   const { clubContext } = useAuth();
@@ -363,57 +387,60 @@ export default function CreateMatchFromImages() {
   return (
     <section className="space-y-6">
       <div className={cardClass()}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight text-white">
-              Crear partido por imágenes
-            </h1>
-            <p className="mt-3 text-sm text-slate-300">
-              Flujo guiado: el sistema define el contexto del partido y la IA
-              solo ayuda con el marcador.
-            </p>
-          </div>
+  <div className="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-300/80">
+        FIFA Club Pro
+      </p>
+      <h1 className="mt-2 text-3xl font-black tracking-tight text-white">
+        Crear partido por imágenes
+      </h1>
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
+        Flujo guiado: el sistema define el contexto del partido y la IA ayuda
+        con el marcador, manteniendo el control manual antes de guardar.
+      </p>
+    </div>
 
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={() => navigate("/matches/create")}
-              className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
-            >
-              Volver
-            </button>
+    <div className="flex gap-3">
+      <button
+        type="button"
+        onClick={() => navigate("/matches/create")}
+        className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
+      >
+        Volver
+      </button>
 
-            <button
-              type="button"
-              onClick={() => navigate("/matches")}
-              className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
-            >
-              Ir a partidos
-            </button>
-          </div>
-        </div>
-      </div>
+      <button
+        type="button"
+        onClick={() => navigate("/matches")}
+        className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
+      >
+        Ir a partidos
+      </button>
+    </div>
+  </div>
+</div>
 
       <div className={cardClass()}>
         {baseError ? (
-          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+          <div className={errorBoxClass()}>
             {baseError}
           </div>
         ) : null}
 
         {error ? (
-          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+          <div className={errorBoxClass()}>
             {error}
           </div>
         ) : null}
 
         {ok ? (
-          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+          <div className={successBoxClass()}>
             {ok}
           </div>
         ) : null}
 
-        <div className="space-y-6">
+        <div className="space-y-7">
           <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
             <h2 className="text-lg font-bold text-white">1. Contexto del partido</h2>
 
@@ -541,10 +568,11 @@ export default function CreateMatchFromImages() {
           <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-5">
             <h2 className="text-lg font-bold text-sky-100">3. Importación por imágenes</h2>
 
-            <p className="mt-2 text-sm text-slate-300">
-              La IA se usa solo como ayuda para el marcador. Los stats aún no se
-              guardan porque la confianza sigue siendo baja. 
-            </p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+  La IA se usa como apoyo para detectar el marcador. El rival, la condición
+  local/visita y el contexto del partido los define el sistema para evitar
+  errores de OCR.
+</p>
 
             <div className="mt-4 space-y-4">
               <label className="block space-y-2">
@@ -568,53 +596,77 @@ export default function CreateMatchFromImages() {
               </div>
 
               {aiResult ? (
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-emerald-100">
-                  <div>
-                    <span className="font-semibold">Score detectado por IA:</span>{" "}
-                    {detectedScoreHome ?? "-"} - {detectedScoreAway ?? "-"}
-                  </div>
+  <div className="rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 p-5 text-sm text-emerald-100">
+    <div className="grid gap-3 md:grid-cols-2">
+      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="text-xs font-semibold uppercase tracking-wide text-emerald-200/80">
+          Lectura IA
+        </div>
+        <div className="mt-2 text-base font-bold text-white">
+          {detectedScoreHome ?? "-"} - {detectedScoreAway ?? "-"}
+        </div>
+        <div className="mt-2 text-slate-300">
+          Score detectado por IA
+        </div>
+      </div>
 
-                  <div className="mt-1">
-                    <span className="font-semibold">Score final resuelto:</span>{" "}
-                    {finalScoreHome ?? "-"} - {finalScoreAway ?? "-"}
-                  </div>
+      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="text-xs font-semibold uppercase tracking-wide text-emerald-200/80">
+          Resultado final
+        </div>
+        <div className="mt-2 text-base font-bold text-white">
+          {finalScoreHome ?? "-"} - {finalScoreAway ?? "-"}
+        </div>
+        <div className="mt-2 text-slate-300">
+          Score resuelto según local / visita
+        </div>
+      </div>
+    </div>
 
-                  <div className="mt-1">
-                    <span className="font-semibold">Confianza general:</span>{" "}
-                    {confidenceOverall}
-                  </div>
+    <div className="mt-4 grid gap-3 md:grid-cols-3">
+      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="text-xs font-semibold uppercase tracking-wide text-emerald-200/80">
+          Confianza general
+        </div>
+        <div className="mt-2 text-base font-bold text-white">
+          {confidenceOverall}
+        </div>
+      </div>
 
-                  <div className="mt-1">
-                    <span className="font-semibold">Confianza score:</span>{" "}
-                    {confidenceScore}
-                  </div>
+      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="text-xs font-semibold uppercase tracking-wide text-emerald-200/80">
+          Confianza score
+        </div>
+        <div className="mt-2 text-base font-bold text-white">
+          {confidenceScore}
+        </div>
+      </div>
 
-                  <div className="mt-1">
-                    <span className="font-semibold">Confianza stats:</span>{" "}
-                    {confidenceStats}
-                  </div>
+      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="text-xs font-semibold uppercase tracking-wide text-emerald-200/80">
+          Estado detectado
+        </div>
+        <div className="mt-2 text-base font-bold text-white">
+          {aiResult?.matchDraft?.status || "—"}
+        </div>
+      </div>
+    </div>
 
-                  <div className="mt-1">
-                    <span className="font-semibold">Estado detectado:</span>{" "}
-                    {aiResult?.matchDraft?.status || "—"}
-                  </div>
+    {!statsLookUsable ? (
+      <div className="mt-4 rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-yellow-100">
+        Los stats detectados por IA no se usarán en esta etapa porque la
+        confianza sigue siendo baja.
+      </div>
+    ) : null}
 
-                  {!statsLookUsable ? (
-                    <div className="mt-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-100">
-                      Los stats detectados por IA no se usarán en esta etapa
-                      porque la confianza sigue siendo baja. 
-                    </div>
-                  ) : null}
-
-                  {confidenceOverall < 0.5 ? (
-                    <div className="mt-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-100">
-                      La IA respondió con baja confianza general. Revisa el
-                      marcador antes de guardar. En tus resultados recientes la
-                      confianza general fue 0.2. 
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
+    {confidenceOverall < 0.5 ? (
+      <div className="mt-4 rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-yellow-100">
+        La IA respondió con baja confianza general. Revisa el marcador antes de
+        guardar.
+      </div>
+    ) : null}
+  </div>
+) : null}
             </div>
           </div>
 
@@ -714,34 +766,34 @@ export default function CreateMatchFromImages() {
             </label>
           ) : null}
 
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={handleProcessImages}
-              disabled={loadingIA}
-              className="rounded-xl bg-sky-600 px-5 py-2.5 font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
-            >
-              {loadingIA ? "Procesando..." : "Procesar imágenes"}
-            </button>
+          <div className="flex flex-wrap gap-3 pt-2">
+  <button
+    type="button"
+    onClick={handleProcessImages}
+    disabled={loadingIA}
+    className={primaryButtonClass("sky")}
+  >
+    {loadingIA ? "Procesando..." : "Procesar imágenes"}
+  </button>
 
-            <button
-              type="button"
-              onClick={handleSaveImportedMatch}
-              disabled={saving || !aiResult}
-              className="rounded-xl bg-emerald-600 px-5 py-2.5 font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
-            >
-              {saving ? "Guardando..." : "Guardar partido importado"}
-            </button>
+  <button
+    type="button"
+    onClick={handleSaveImportedMatch}
+    disabled={saving || !aiResult}
+    className={primaryButtonClass("emerald")}
+  >
+    {saving ? "Guardando..." : "Guardar partido importado"}
+  </button>
 
-            <button
-              type="button"
-              onClick={resetForm}
-              disabled={loadingIA || saving}
-              className="rounded-xl border border-white/10 px-5 py-2.5 font-semibold text-white hover:bg-white/10 disabled:opacity-50"
-            >
-              Limpiar
-            </button>
-          </div>
+  <button
+    type="button"
+    onClick={resetForm}
+    disabled={loadingIA || saving}
+    className={secondaryButtonClass()}
+  >
+    Limpiar
+  </button>
+</div>
         </div>
       </div>
     </section>
